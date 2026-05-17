@@ -1,5 +1,6 @@
 import { useWorkbenchStore } from "../store/workbench-store.js";
-import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING, BUTTON } from "./workbench-tokens.js";
+import { useButtonHover } from "./use-button-hover.js";
 
 /**
  * Toolbar — top bar with branding, view toggles, and action buttons.
@@ -14,6 +15,28 @@ export function Toolbar() {
   const leftSidebarVisible = useWorkbenchStore((s) => s.leftSidebarVisible);
   const rightSidebarVisible = useWorkbenchStore((s) => s.rightSidebarVisible);
   const bottomPanelVisible = useWorkbenchStore((s) => s.bottomPanelVisible);
+
+  const leftBtn = useButtonHover();
+  const runBtn = useButtonHover();
+  const assistBtn = useButtonHover();
+
+  // Four-state background logic for toggle buttons:
+  //   active+hovered → BUTTON.activeBg, active+not-hovered → SURFACE.xxx,
+  //   inactive+hovered → BUTTON.hoverBg, inactive+not-hovered → transparent
+  const leftBg = leftSidebarVisible
+    ? (leftBtn.isHovered ? BUTTON.activeBg : SURFACE.sidebar)
+    : leftBtn.hoverBg;
+  const runBg = bottomPanelVisible
+    ? (runBtn.isHovered ? BUTTON.activeBg : SURFACE.panel)
+    : runBtn.hoverBg;
+  const assistBg = rightSidebarVisible
+    ? (assistBtn.isHovered ? BUTTON.activeBg : SURFACE.assistant)
+    : assistBtn.hoverBg;
+
+  // Active toggle text color (accent when active, hook-managed when inactive)
+  const leftColor = leftSidebarVisible ? TEXT.primary : leftBtn.buttonStyle.color;
+  const runColor = bottomPanelVisible ? TEXT.accent : runBtn.buttonStyle.color;
+  const assistColor = rightSidebarVisible ? TEXT.accent : assistBtn.buttonStyle.color;
 
   return (
     <div
@@ -35,14 +58,13 @@ export function Toolbar() {
           onClick={toggleLeftSidebar}
           title="Toggle Explorer"
           style={{
-            background: leftSidebarVisible ? SURFACE.sidebar : "transparent",
-            border: "none",
-            color: TEXT.primary,
-            cursor: "pointer",
-            padding: `${SPACING.xs}px ${SPACING.sm}px`,
-            borderRadius: 4,
+            ...leftBtn.buttonStyle,
+            background: leftBg,
+            color: leftColor,
+            padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
             fontSize: 13,
           }}
+          {...leftBtn.hoverProps}
         >
           ☰
         </button>
@@ -57,14 +79,13 @@ export function Toolbar() {
           onClick={toggleBottomPanel}
           title="Toggle Run Preview"
           style={{
-            background: bottomPanelVisible ? SURFACE.panel : "transparent",
-            border: "none",
-            color: bottomPanelVisible ? TEXT.accent : TEXT.secondary,
-            cursor: "pointer",
-            padding: `${SPACING.xs}px ${SPACING.sm}px`,
-            borderRadius: 4,
+            ...runBtn.buttonStyle,
+            background: runBg,
+            color: runColor,
+            padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
             fontSize: 13,
           }}
+          {...runBtn.hoverProps}
         >
           ▶ Run
         </button>
@@ -76,14 +97,13 @@ export function Toolbar() {
           onClick={toggleRightSidebar}
           title="Toggle Assistant"
           style={{
-            background: rightSidebarVisible ? SURFACE.assistant : "transparent",
-            border: "none",
-            color: rightSidebarVisible ? TEXT.accent : TEXT.secondary,
-            cursor: "pointer",
-            padding: `${SPACING.xs}px ${SPACING.sm}px`,
-            borderRadius: 4,
+            ...assistBtn.buttonStyle,
+            background: assistBg,
+            color: assistColor,
+            padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
             fontSize: 13,
           }}
+          {...assistBtn.hoverProps}
         >
           💬 Assistant
         </button>

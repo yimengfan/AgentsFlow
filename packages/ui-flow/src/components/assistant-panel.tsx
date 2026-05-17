@@ -1,5 +1,6 @@
 import { useWorkbenchStore, type RightViewId } from "../store/workbench-store.js";
-import { SURFACE, BORDER, TEXT, SPACING, TYPO } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
+import { useButtonHover } from "./use-button-hover.js";
 
 /**
  * AssistantPanel — copilot-like chat panel on the right sidebar.
@@ -25,6 +26,12 @@ const VIEW_MODES: ReadonlyArray<{ id: RightViewId; label: string }> = [
 export function AssistantPanel() {
   const activeRightView = useWorkbenchStore((s) => s.activeRightView);
   const setActiveRightView = useWorkbenchStore((s) => s.setActiveRightView);
+  const assistantTabBtn = useButtonHover();
+  const runDetailTabBtn = useButtonHover();
+  const tabHoverMap = {
+    assistant: assistantTabBtn,
+    "run-detail": runDetailTabBtn,
+  } as const;
 
   return (
     <div
@@ -44,27 +51,36 @@ export function AssistantPanel() {
           flexShrink: 0,
         }}
       >
-        {VIEW_MODES.map((mode) => (
-          <button
-            key={mode.id}
-            onClick={() => setActiveRightView(mode.id)}
-            style={{
-              padding: `${SPACING.sm}px ${SPACING.md}px`,
-              background: activeRightView === mode.id ? SURFACE.sidebar : "transparent",
-              border: "none",
-              borderBottom:
-                activeRightView === mode.id
-                  ? `2px solid ${BORDER.active}`
-                  : "2px solid transparent",
-              color: activeRightView === mode.id ? TEXT.primary : TEXT.secondary,
-              cursor: "pointer",
-              fontSize: TYPO.smallFontSize,
-              fontWeight: 600,
-            }}
-          >
-            {mode.label}
-          </button>
-        ))}
+        {VIEW_MODES.map((mode) => {
+          const isActive = activeRightView === mode.id;
+          const { hoverBg, hoverProps, isHovered, buttonStyle } = tabHoverMap[mode.id];
+          // Four-state background: active+hovered → BUTTON.activeBg, active+not-hovered → SURFACE.sidebar,
+          // inactive+hovered → BUTTON.hoverBg, inactive+not-hovered → transparent
+          const bg = isActive
+            ? (isHovered ? BUTTON.activeBg : SURFACE.sidebar)
+            : hoverBg;
+          return (
+            <button
+              key={mode.id}
+              onClick={() => setActiveRightView(mode.id)}
+              style={{
+                ...buttonStyle,
+                padding: `${SPACING.sm}px ${SPACING.md}px`,
+                background: bg,
+                borderBottom:
+                  activeRightView === mode.id
+                    ? `2px solid ${BORDER.active}`
+                    : "2px solid transparent",
+                color: activeRightView === mode.id ? TEXT.primary : buttonStyle.color,
+                fontSize: TYPO.smallFontSize,
+                fontWeight: 600,
+              }}
+              {...hoverProps}
+            >
+              {mode.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Content area */}
@@ -99,9 +115,9 @@ function AssistantChat() {
               padding: `${SPACING.sm}px ${SPACING.md}px`,
               background:
                 msg.role === "user"
-                  ? "rgba(79, 70, 229, 0.15)"
+                  ? ACCENT.indigo + "26"  // 15% opacity hex suffix
                   : msg.role === "system"
-                    ? "rgba(107, 114, 128, 0.1)"
+                    ? TEXT.muted + "1a"   // 10% opacity hex suffix
                     : SURFACE.sidebar,
               borderRadius: 6,
               fontSize: TYPO.fontSize,

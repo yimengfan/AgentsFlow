@@ -110,7 +110,7 @@ import { foo } from "./bar.ts";
 - `@monaco-editor/react` for YAML editing
 - `react-resizable-panels` v2.1.9 for layout (`Panel`, `PanelGroup`, `PanelResizeHandle`, `ImperativePanelHandle`, `PanelOnCollapse`, `PanelOnExpand`)
 - `react-resizable-panels` — use `ImperativePanelHandle` refs + `isCollapsed()` guards for programmatic panel control; NEVER use `autoSaveId`
-- Dark theme centralized in `workbench-tokens.ts` (#1e1e2e bg, #333 borders, #e0e0e0 text, #2d2d3f surfaces)
+- Theme system in `workbench-tokens.ts` — 3-layer abstraction (Theme Preset → Palette → Semantic Tokens); active theme: **Dark OLED**
 
 ### Workbench Layout (VS Code–style)
 
@@ -184,6 +184,37 @@ interface FlowSummary {
 }
 ```
 
+### Theme System (workbench-tokens.ts)
+
+The workbench uses a **3-layer token abstraction** for one-click theme swapping:
+
+```
+Layer 3 — Theme Presets (named collections: darkOled, darkCatppuccinMocha, darkOneDark)
+Layer 2 — Palette (raw color values: bgBase, borderDefault, textPrimary, ...)
+Layer 1 — Semantic Tokens (component API: SURFACE.toolbar, BORDER.default, TEXT.primary, ...)
+```
+
+**How it works:**
+- Components ONLY import Layer 1 semantic tokens (`SURFACE`, `BORDER`, `TEXT`, etc.)
+- Semantic tokens are auto-resolved from the active theme preset's palette
+- Swapping themes = changing one argument (`resolveTokens(darkOled)` → `resolveTokens(darkCatppuccinMocha)`)
+- No component code changes needed when switching themes
+
+**Adding a new theme preset:**
+1. Define a new `ThemePreset` object in `workbench-tokens.ts` with a `name` and `palette`
+2. Add it to the `THEME_PRESETS` array
+3. Change `resolveTokens(darkOled)` to `resolveTokens(yourNewPreset)` to activate
+
+**Key types:** `ThemePreset`, `Palette`, `SemanticTokens`
+**Available presets:** `darkOled` (active), `darkCatppuccinMocha`, `darkOneDark`
+**Backward compat:** Named exports (`SURFACE`, `BORDER`, `TEXT`, etc.) are re-exported from `tokens` object
+
+**Theme invariants — DO NOT VIOLATE:**
+1. **Components MUST use semantic tokens only** — never reference palette colors or theme preset directly
+2. **New color needs go in Palette first** — then map to a semantic token in `resolveTokens()`
+3. **Theme preset names must be unique** — used as lookup keys in `getThemePreset()`
+4. **Never hardcode hex values in components** — always reference from `workbench-tokens.ts`
+
 ## Key Patterns
 
 ### Adding a New IPC Channel
@@ -249,3 +280,4 @@ Do NOT skip verification. Do NOT declare "done" while typecheck or build still h
 10. **autoSaveId conflict** → NEVER use `autoSaveId` on `react-resizable-panels` `PanelGroup` — it persists panel sizes in the library's own localStorage, overriding imperative `collapse()`/`expand()` calls. Use Zustand store as single source of truth instead.
 11. **ImperativePanelHandle infinite loop** → MUST use `isCollapsed()` guard before calling `panel.collapse()`/`panel.expand()` in useEffect. Without it: store toggle → effect → collapse() → onCollapse callback → store toggle → ∞
 12. **Left sidebar view switching** → Workbench must use `renderLeftSidebarContent(activeLeftView)` switch statement, NOT always render `<ExplorerPane />`. Activity bar buttons change `activeLeftView` in store but the workbench must read it and render the correct pane.
+13. **Theme token hardcoding** → NEVER hardcode hex colors or pixel values in components. All visual values MUST come from `workbench-tokens.ts` semantic tokens. New colors go in `Palette` type first, then map to semantic tokens.

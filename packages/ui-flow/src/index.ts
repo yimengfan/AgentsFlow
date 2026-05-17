@@ -23,5 +23,15 @@ export { FlowEditorSurface } from "./components/flow-editor-surface.js";
 export { useWorkbenchStore } from "./store/workbench-store.js";
 export { useWorkspaceStore } from "./store/workspace-store.js";
 
-// Workbench styling tokens
+// Workbench styling tokens & theme system
+export type { Palette, SemanticTokens, ThemePreset } from "./components/workbench-tokens.js";
+export {
+  darkOled,
+  darkCatppuccinMocha,
+  darkOneDark,
+  THEME_PRESETS,
+  tokens,
+  getThemePreset,
+  resolveThemeTokens,
+} from "./components/workbench-tokens.js";
 export * as WorkbenchTokens from "./components/workbench-tokens.js";

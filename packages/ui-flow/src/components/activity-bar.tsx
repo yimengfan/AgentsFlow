@@ -1,5 +1,8 @@
+import React from "react";
 import { useWorkbenchStore, type LeftViewId } from "../store/workbench-store.js";
-import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING, BUTTON } from "./workbench-tokens.js";
+import { useButtonHover } from "./use-button-hover.js";
+import { ExplorerIcon, WorkspaceIcon, PreviewIcon } from "./icons.js";
 
 /**
  * ActivityBar — narrow vertical icon strip on the far left.
@@ -8,15 +11,24 @@ import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING } from "./workbench-tokens
  * Must NOT set height or position — the workbench shell controls that.
  */
 
-const VIEW_ICONS: ReadonlyArray<{ id: LeftViewId; icon: string; label: string }> = [
-  { id: "explorer", icon: "📁", label: "Explorer" },
-  { id: "workspace", icon: "🔄", label: "Workspace" },
-  { id: "preview", icon: "🔍", label: "Preview" },
+/** Map of view IDs to their SVG icon components (uipro line-art style). */
+const VIEW_ICONS: ReadonlyArray<{ id: LeftViewId; Icon: React.FC; label: string }> = [
+  { id: "explorer", Icon: ExplorerIcon, label: "Explorer" },
+  { id: "workspace", Icon: WorkspaceIcon, label: "Workspace" },
+  { id: "preview", Icon: PreviewIcon, label: "Preview" },
 ];
 
 export function ActivityBar() {
   const activeLeftView = useWorkbenchStore((s) => s.activeLeftView);
   const setActiveLeftView = useWorkbenchStore((s) => s.setActiveLeftView);
+  const explorerBtn = useButtonHover();
+  const workspaceBtn = useButtonHover();
+  const previewBtn = useButtonHover();
+  const hoverMap = {
+    explorer: explorerBtn,
+    workspace: workspaceBtn,
+    preview: previewBtn,
+  } as const;
 
   return (
     <div
@@ -35,27 +47,32 @@ export function ActivityBar() {
     >
       {VIEW_ICONS.map((view) => {
         const isActive = activeLeftView === view.id;
+        const { hoverBg, hoverProps, isHovered, buttonStyle } = hoverMap[view.id];
+        // Four-state background: active+hovered → BUTTON.activeBg, active+not-hovered → SURFACE.sidebar,
+        // inactive+hovered → BUTTON.hoverBg, inactive+not-hovered → transparent
+        const bg = isActive
+          ? (isHovered ? BUTTON.activeBg : SURFACE.sidebar)
+          : hoverBg;
         return (
           <button
             key={view.id}
             onClick={() => setActiveLeftView(view.id)}
             title={view.label}
             style={{
+              ...buttonStyle,
               width: 36,
               height: 36,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: isActive ? SURFACE.sidebar : "transparent",
-              border: "none",
+              background: bg,
               borderLeft: isActive ? `2px solid ${BORDER.active}` : "2px solid transparent",
-              color: isActive ? TEXT.primary : TEXT.secondary,
-              cursor: "pointer",
-              borderRadius: 4,
-              fontSize: 16,
+              color: isActive ? TEXT.primary : buttonStyle.color,
+              padding: 0,
             }}
+            {...hoverProps}
           >
-            {view.icon}
+            <view.Icon />
           </button>
         );
       })}

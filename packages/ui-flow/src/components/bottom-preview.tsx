@@ -2,7 +2,8 @@ import { useWorkbenchStore } from "../store/workbench-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { usePlatform } from "@agentsflow/platform-adapter";
 import { useState, useCallback } from "react";
-import { SURFACE, BORDER, TEXT, SPACING, TYPO } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
+import { usePrimaryButtonHover, useButtonHover } from "./use-button-hover.js";
 
 /**
  * BottomPreview — run preview panel that appears below the editor.
@@ -21,6 +22,9 @@ export function BottomPreview() {
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [events, setEvents] = useState<readonly string[]>([]);
+
+  const startBtn = usePrimaryButtonHover();
+  const closeBtn = useButtonHover();
 
   const handleStart = useCallback(async () => {
     if (!activeFlowPath) return;
@@ -67,27 +71,27 @@ export function BottomPreview() {
             onClick={handleStart}
             disabled={!doc?.flow || status === "running"}
             style={{
-              background: doc?.flow ? BORDER.active : TEXT.muted,
-              border: "none",
-              color: "#fff",
-              cursor: doc?.flow ? "pointer" : "not-allowed",
-              padding: `${SPACING.xs}px ${SPACING.sm}px`,
-              borderRadius: 4,
+              ...startBtn.buttonStyle,
+              background: doc?.flow ? startBtn.hoverBg : TEXT.muted,
+              color: BUTTON.primaryText,
+              padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
               fontSize: TYPO.smallFontSize,
+              cursor: doc?.flow ? "pointer" : "not-allowed",
             }}
+            {...startBtn.hoverProps}
           >
             ▶ Start
           </button>
           <button
             onClick={toggleBottomPanel}
             style={{
-              background: "transparent",
-              border: "none",
+              ...closeBtn.buttonStyle,
+              background: closeBtn.hoverBg,
               color: TEXT.muted,
-              cursor: "pointer",
-              padding: `${SPACING.xs}px`,
+              padding: `${BUTTON.paddingY}px`,
               fontSize: 14,
             }}
+            {...closeBtn.hoverProps}
           >
             ✕
           </button>
@@ -100,7 +104,7 @@ export function BottomPreview() {
           style={{
             padding: `${SPACING.xs}px ${SPACING.md}px`,
             fontSize: TYPO.smallFontSize,
-            color: status === "running" ? "#22c55e" : status === "error" ? "#ef4444" : TEXT.secondary,
+            color: status === "running" ? ACCENT.runGreen : status === "error" ? ACCENT.errorRed : TEXT.secondary,
             borderBottom: `1px solid ${BORDER.default}`,
             flexShrink: 0,
           }}

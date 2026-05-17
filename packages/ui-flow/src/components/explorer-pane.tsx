@@ -2,7 +2,7 @@ import { useWorkbenchStore } from "../store/workbench-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { usePlatform } from "@agentsflow/platform-adapter";
 import { useEffect, useCallback } from "react";
-import { SURFACE, BORDER, TEXT, SPACING, TYPO } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
 
 /**
  * ExplorerPane — file/directory browser in the left sidebar.
@@ -114,15 +114,19 @@ export function ExplorerPane() {
                 display: "block",
                 width: "100%",
                 padding: `${SPACING.sm}px ${SPACING.md}px`,
-                background: isActive ? "rgba(79, 70, 229, 0.15)" : "transparent",
-                border: "none",
+                background: isActive ? ACCENT.indigo + "26" : "transparent",
                 borderLeft: isActive
                   ? `2px solid ${BORDER.active}`
                   : "2px solid transparent",
+                borderRight: "none",
+                borderTop: "none",
+                borderBottom: "none",
                 color: isActive ? TEXT.primary : TEXT.secondary,
                 cursor: "pointer",
                 textAlign: "left",
                 fontSize: TYPO.fontSize,
+                borderRadius: BUTTON.borderRadius,
+                transition: `background-color ${BUTTON.transitionMs}ms ease, color ${BUTTON.transitionMs}ms ease`,
               }}
             >
               <div style={{ fontWeight: isActive ? 500 : 400 }}>

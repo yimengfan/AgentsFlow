@@ -1,5 +1,5 @@
 import { useWorkspaceStore } from "../store/workspace-store.js";
-import { SURFACE, BORDER, TEXT, SPACING, TYPO } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, SPACING, TYPO, BUTTON } from "./workbench-tokens.js";
 
 /**
  * TabBar — horizontal row of open flow tabs.
@@ -7,6 +7,12 @@ import { SURFACE, BORDER, TEXT, SPACING, TYPO } from "./workbench-tokens.js";
  * Layout invariant: fixed height 35px at the top of the center workspace.
  * Must NOT set width — the center panel controls that.
  */
+
+/** Common interactive style for tab items — cursor + transition per uipro spec. */
+const tabInteractiveStyle: React.CSSProperties = {
+  cursor: "pointer",
+  transition: `background-color ${BUTTON.transitionMs}ms ease, color ${BUTTON.transitionMs}ms ease`,
+};
 export function TabBar() {
   const openTabs = useWorkspaceStore((s) => s.openTabs);
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
@@ -39,6 +45,7 @@ export function TabBar() {
             key={flowPath}
             onClick={() => setActiveFlow(flowPath)}
             style={{
+              ...tabInteractiveStyle,
               display: "flex",
               alignItems: "center",
               gap: SPACING.xs,
@@ -47,7 +54,6 @@ export function TabBar() {
               borderRight: `1px solid ${BORDER.default}`,
               borderBottom: isActive ? "none" : undefined,
               color: isActive ? TEXT.primary : TEXT.secondary,
-              cursor: "pointer",
               fontSize: TYPO.tabFontSize,
               whiteSpace: "nowrap",
               position: "relative",
@@ -67,14 +73,18 @@ export function TabBar() {
               }}
               style={{
                 background: "none",
-                border: "none",
+                border: "1px solid transparent",
                 color: TEXT.muted,
                 cursor: "pointer",
-                padding: 0,
+                padding: "0 2px",
                 fontSize: 14,
                 lineHeight: 1,
                 marginLeft: SPACING.xs,
+                borderRadius: BUTTON.borderRadius,
+                transition: `color ${BUTTON.transitionMs}ms ease, border-color ${BUTTON.transitionMs}ms ease`,
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = TEXT.primary; e.currentTarget.style.borderColor = BUTTON.borderHover; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = TEXT.muted; e.currentTarget.style.borderColor = "transparent"; }}
             >
               ×
             </button>
