@@ -1,0 +1,26 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+runs/
+*.db
+*.db-journal
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Electron
+apps/desktop/dist/
+
+# Web / Studio
+apps/web/dist/
+apps/studio/dist/
+
+# Packages
+packages/*/dist/

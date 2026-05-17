@@ -1,0 +1,38 @@
+{
+  "name": "@agentsflow/desktop",
+  "version": "0.1.0",
+  "description": "Electron desktop shell for AgentsFlow Flow Studio",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentsflow/flow-engine": "workspace:*",
+    "@agentsflow/flow-schema": "workspace:*",
+    "@agentsflow/agent-registry": "workspace:*",
+    "@agentsflow/local-store": "workspace:*",
+    "@agentsflow/shared-contracts": "workspace:*",
+    "@agentsflow/agent-contracts": "workspace:*",
+    "@agentsflow/ui-flow": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "electron-store": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.24.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0",
+    "vite": "^6.0.0"
+  },
+  "license": "MIT"
+}

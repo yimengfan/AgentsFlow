@@ -1,0 +1,25 @@
+{
+  "name": "agentsflow",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A graph-based flow framework for AI agent orchestration",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "pnpm -r --stream run build",
+    "build:contracts": "pnpm --filter @agentsflow/agent-contracts --filter @agentsflow/shared-contracts --filter @agentsflow/flow-schema run build",
+    "test": "pnpm -r --stream run test",
+    "test:contracts": "pnpm --filter @agentsflow/agent-contracts --filter @agentsflow/shared-contracts --filter @agentsflow/flow-schema run test",
+    "lint": "pnpm -r --stream run lint",
+    "typecheck": "pnpm -r --stream run typecheck",
+    "clean": "pnpm -r --stream run clean",
+    "dev": "pnpm dev:web",
+    "dev:web": "pnpm --filter @agentsflow/web run dev",
+    "dev:desktop": "pnpm --filter @agentsflow/desktop run dev"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5"
+  }
+}

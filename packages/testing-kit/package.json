@@ -1,0 +1,32 @@
+{
+  "name": "@agentsflow/testing-kit",
+  "version": "0.1.0",
+  "description": "FakeAgentAdapter, golden flows, contract fixtures, and test utilities",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentsflow/agent-contracts": "workspace:*",
+    "@agentsflow/shared-contracts": "workspace:*",
+    "@agentsflow/flow-schema": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT",
+  "keywords": ["agentsflow", "testing", "fake-adapter", "fixtures"]
+}

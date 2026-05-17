@@ -1,0 +1,24 @@
+{
+  "name": "@agentsflow/shared-contracts",
+  "version": "0.1.0",
+  "description": "Shared types, IPC channel definitions, error codes, and common DTOs",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "keywords": ["agentsflow", "shared", "contracts", "ipc"]
+}

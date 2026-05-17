@@ -1,0 +1,50 @@
+{
+  "name": "@agentsflow/ui-flow",
+  "version": "0.1.0",
+  "description": "React Flow canvas, node panel, run event view, agent definition panel, and YAML edit linking",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentsflow/flow-schema": "workspace:*",
+    "@agentsflow/platform-adapter": "workspace:*",
+    "@agentsflow/shared-contracts": "workspace:*",
+    "@monaco-editor/react": "^4.6.0",
+    "@xyflow/react": "^12.6.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-resizable-panels": "^2.1.0",
+    "zustand": "^5.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agentsflow",
+    "ui",
+    "react-flow",
+    "canvas"
+  ],
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

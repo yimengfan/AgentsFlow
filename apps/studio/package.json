@@ -1,0 +1,25 @@
+{
+  "name": "@agentsflow/studio",
+  "version": "0.1.0",
+  "description": "AgentsFlow Studio — shared renderer (used by web and desktop)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentsflow/ui-flow": "workspace:*",
+    "@agentsflow/platform-adapter": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^6.0.0"
+  },
+  "license": "MIT"
+}

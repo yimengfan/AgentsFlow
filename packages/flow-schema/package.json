@@ -1,0 +1,28 @@
+{
+  "name": "@agentsflow/flow-schema",
+  "version": "0.1.0",
+  "description": "Flow YAML schema definition, Zod validation, serialization, and migration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.0",
+    "yaml": "^2.7.0"
+  },
+  "license": "MIT",
+  "keywords": ["agentsflow", "flow", "schema", "yaml", "validation"]
+}
