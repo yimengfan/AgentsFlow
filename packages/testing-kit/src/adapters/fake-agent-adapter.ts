@@ -6,6 +6,7 @@ import type {
   AgentSessionContext,
   AgentInvocation,
   AgentTurnResult,
+  TurnMode,
 } from "@agentsflow/agent-contracts";
 
 /**
@@ -44,6 +45,22 @@ export interface FakeAdapterConfig {
     outputTokens?: number;
     durationMs?: number;
   };
+  /**
+   * Per-turn-mode response overrides.
+   * When set, these take precedence over responseText for the matching turnMode.
+   */
+  turnModeResponses?: {
+    plan?: { finalText?: string; structuredOutput?: Record<string, unknown> };
+    evaluate?: { finalText?: string; structuredOutput?: Record<string, unknown> };
+    normal?: { finalText?: string; structuredOutput?: Record<string, unknown> };
+    summarize?: { finalText?: string; structuredOutput?: Record<string, unknown> };
+  };
+  /**
+   * Score progression for evaluate turns (0-1 per iteration).
+   * If set, the Nth evaluate call returns the Nth score.
+   * If not set, defaults to gradually increasing scores.
+   */
+  evaluateScoreProgression?: readonly number[];
 }
 
 const DEFAULT_METADATA: AgentAdapterMetadata = {
@@ -69,12 +86,14 @@ const DEFAULT_METADATA: AgentAdapterMetadata = {
  * work correctly without requiring a real agent backend.
  *
  * Behavior is configurable via FakeAdapterConfig.
+ * Supports turnMode-aware responses for plan/evaluate/normal/summarize.
  */
 export class FakeAgentAdapter implements AgentAdapter {
   readonly metadata: AgentAdapterMetadata;
   private config: FakeAdapterConfig;
   private sessions: Map<string, AgentSession> = new Map();
   private turnCounter = 0;
+  private evaluateCounter = 0;
 
   constructor(config: FakeAdapterConfig = {}, metadata?: Partial<AgentAdapterMetadata>) {
     this.config = config;
@@ -172,11 +191,15 @@ export class FakeAgentAdapter implements AgentAdapter {
       usedCapabilities.push("delegation-proposal");
     }
 
+    // Build turn-mode-aware response
+    const { finalText, structuredOutput } = this.buildTurnResponse(invocation);
+
     // Build successful result
     return {
       invocationId: invocation.invocationId,
       status: "completed",
-      finalText: this.config.responseText ?? `Fake response for turn ${this.turnCounter} on node ${invocation.nodeId}`,
+      finalText,
+      ...(structuredOutput ? { structuredOutput } : {}),
       usage: {
         inputTokens: this.config.usage?.inputTokens ?? 100,
         outputTokens: this.config.usage?.outputTokens ?? 50,
@@ -189,6 +212,87 @@ export class FakeAgentAdapter implements AgentAdapter {
       ...(delegationProposal ? { delegationProposal } : {}),
       ...(usedCapabilities.length > 0 ? { usedCapabilities } : {}),
     };
+  }
+
+  /**
+   * Build a turn-mode-aware response.
+   * Returns different content based on invocation.turnMode:
+   *   - plan: returns a structured plan
+   *   - evaluate: returns a score/canComplete/reason
+   *   - normal: returns an execution result
+   *   - summarize: returns a summary
+   */
+  private buildTurnResponse(
+    invocation: AgentInvocation,
+  ): { finalText: string; structuredOutput?: Record<string, unknown> } {
+    const turnMode: TurnMode = invocation.turnMode ?? "normal";
+
+    // Check for per-turn-mode overrides in config
+    const modeOverride = this.config.turnModeResponses?.[turnMode];
+    if (modeOverride) {
+      return {
+        finalText: modeOverride.finalText ?? `Fake ${turnMode} response`,
+        ...(modeOverride.structuredOutput ? { structuredOutput: modeOverride.structuredOutput } : {}),
+      };
+    }
+
+    switch (turnMode) {
+      case "plan": {
+        const task = (invocation.input as Record<string, unknown>).userPrompt ?? "the given task";
+        const plan = {
+          goal: `Accomplish: ${task}`,
+          steps: [
+            { step: 1, action: "Analyze the input and requirements" },
+            { step: 2, action: "Execute the main processing logic" },
+            { step: 3, action: "Verify the result meets requirements" },
+          ],
+          estimatedIterations: 2,
+        };
+        return {
+          finalText: `Plan created for: ${task}`,
+          structuredOutput: plan,
+        };
+      }
+
+      case "evaluate": {
+        this.evaluateCounter++;
+        // Use score progression if provided, otherwise gradually increase
+        const progression = this.config.evaluateScoreProgression;
+        const score = progression
+          ? (progression[this.evaluateCounter - 1] ?? progression[progression.length - 1] ?? 1.0)
+          : Math.min(0.5 + this.evaluateCounter * 0.2, 1.0);
+
+        const canComplete = score >= 0.8;
+        const evalResult = {
+          score,
+          canComplete,
+          reason: canComplete
+            ? `Evaluation score ${score.toFixed(2)} meets threshold (>= 0.8). Task can be completed.`
+            : `Evaluation score ${score.toFixed(2)} is below threshold (0.8). Iteration ${this.evaluateCounter} needs more work.`,
+        };
+        return {
+          finalText: evalResult.reason,
+          structuredOutput: evalResult,
+        };
+      }
+
+      case "summarize": {
+        const previousResult = (invocation.input as Record<string, unknown>).previousResult as string | undefined;
+        return {
+          finalText: `Summary: ${previousResult ?? "Task completed successfully"}`,
+        };
+      }
+
+      case "normal":
+      default: {
+        const input = invocation.input;
+        const prompt = invocation.prompt ?? "";
+        return {
+          finalText: this.config.responseText
+            ?? `Fake execution result for node "${invocation.nodeId}" (turn ${this.turnCounter}). Input keys: [${Object.keys(input).join(", ")}]. Prompt: "${prompt.slice(0, 100)}"`,
+        };
+      }
+    }
   }
 
   async abort(_turnId: string): Promise<void> {

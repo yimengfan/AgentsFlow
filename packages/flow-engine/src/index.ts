@@ -3,6 +3,6 @@
 
 export { FlowScheduler, type AdapterResolver } from "./scheduler/flow-scheduler.js";
 export { NodeExecutor, type RunContextSnapshot } from "./executor/node-executor.js";
-export { RunContext } from "./context/run-context.js";
+export { RunContext, type EvaluateResult } from "./context/run-context.js";
 export { EventBus } from "./events/event-bus.js";
 export { SubagentArbiter } from "./arbiter/subagent-arbiter.js";

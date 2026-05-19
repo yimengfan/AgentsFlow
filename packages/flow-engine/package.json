@@ -16,13 +16,16 @@
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@agentsflow/agent-contracts": "workspace:*",
     "@agentsflow/shared-contracts": "workspace:*",
     "@agentsflow/flow-schema": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
   },
   "license": "MIT",
   "keywords": ["agentsflow", "flow", "engine", "scheduler"]

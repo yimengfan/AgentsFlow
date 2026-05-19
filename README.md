@@ -109,8 +109,21 @@ cd apps/desktop && pnpm dist
 | `agent-registry` | Adapter discovery & registration | `DefaultAgentRegistry`, `AdapterMetadata` |
 | `local-store` | SQLite event persistence | `LocalStore`, `SqlExecutor` |
 | `platform-adapter` | IPC/HTTP abstraction + React context | `PlatformProvider`, `usePlatform`, `PlatformApi` |
-| `ui-flow` | React Flow canvas + panels | `FlowEditor`, `FlowCanvas`, `useFlowStore` |
+| `ui-flow` | React Flow workbench, canvas, inspector, local preview runtime | `Workbench`, `FlowCanvas`, `useWorkspaceStore`, `useRuntimeStore`, `registerRuntimeAdapterExtension` |
 | `testing-kit` | Fakes, fixtures, golden flows | `FakeAgentAdapter`, contract test helpers |
+
+## Flow Area Specification
+
+Flow area implementation now follows two complementary documents:
+
+- [docs/adr/002-flow-runtime-extension.md](./docs/adr/002-flow-runtime-extension.md) explains the architecture decision: static YAML, runtime scheduler/driver, and adapter extension points.
+- [docs/specs/001-flow-node-contract.md](./docs/specs/001-flow-node-contract.md) defines the maintenance contract for node kinds, ports, params, flow-local custom nodes, debug state, and runtime adapter integration.
+
+Use these rules when you:
+- add a new built-in node kind
+- define `extensions.customNodeSpecs` in a flow
+- integrate a real adapter such as pi-mono
+- update inspector / preview / run-debug behavior
 
 ## Project Conventions
 

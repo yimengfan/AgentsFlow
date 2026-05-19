@@ -230,6 +230,7 @@ export type SemanticTokens = {
     readonly sm: number;
     readonly md: number;
     readonly lg: number;
+    readonly xl: number;
   };
   readonly ACCENT: {
     readonly indigo: string;
@@ -306,6 +307,7 @@ function resolveTokens(preset: ThemePreset): SemanticTokens {
       sm: 8,
       md: 12,
       lg: 16,
+      xl: 24,
     },
 
     ACCENT: {

@@ -16,12 +16,15 @@
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^3.24.0",
     "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
   },
   "license": "MIT",
   "keywords": ["agentsflow", "flow", "schema", "yaml", "validation"]

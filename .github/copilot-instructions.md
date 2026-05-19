@@ -266,6 +266,19 @@ After making any code changes, you **MUST** run verification until all checks pa
 
 Do NOT skip verification. Do NOT declare "done" while typecheck or build still has errors.
 
+### E2E Visual Verification (MANDATORY for UI changes)
+
+For any changes affecting the UI (components, styles, layout, store state that renders), you **MUST** perform end-to-end visual verification:
+
+1. **Start dev server**: `pnpm dev:web` (port 3000)
+2. **Open browser**: Navigate to `http://localhost:3000/` using the browser tools
+3. **Verify page renders**: Confirm the page is not blank — check for toolbar, sidebars, and center content
+4. **Test affected feature**: Interact with the changed UI element (click buttons, switch views, etc.)
+5. **Check console errors**: Use `read_page` to review console events — no `pageError` events should be present
+6. **If page is blank or crashed**: Fix the error before proceeding — check for missing providers, import errors, or runtime exceptions
+
+Do NOT declare UI work "done" without visual verification in the browser.
+
 ## Common Pitfalls
 
 1. **ESM `.js` extension missing** → Runtime ERR_MODULE_NOT_FOUND
@@ -281,3 +294,4 @@ Do NOT skip verification. Do NOT declare "done" while typecheck or build still h
 11. **ImperativePanelHandle infinite loop** → MUST use `isCollapsed()` guard before calling `panel.collapse()`/`panel.expand()` in useEffect. Without it: store toggle → effect → collapse() → onCollapse callback → store toggle → ∞
 12. **Left sidebar view switching** → Workbench must use `renderLeftSidebarContent(activeLeftView)` switch statement, NOT always render `<ExplorerPane />`. Activity bar buttons change `activeLeftView` in store but the workbench must read it and render the correct pane.
 13. **Theme token hardcoding** → NEVER hardcode hex colors or pixel values in components. All visual values MUST come from `workbench-tokens.ts` semantic tokens. New colors go in `Palette` type first, then map to semantic tokens.
+14. **ReactFlowProvider required** → `useReactFlow()` hook REQUIRES a `<ReactFlowProvider>` ancestor in the React tree. The `<ReactFlow>` component alone is NOT sufficient. Wrap `<FlowCanvas>` in `<ReactFlowProvider>` inside `flow-editor-surface.tsx`. Missing provider causes blank page crash with error: "Seems like you have not used zustand provider as an ancestor."

@@ -1,5 +1,6 @@
 import { useWorkbenchStore } from "../store/workbench-store.js";
-import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING, BUTTON } from "./workbench-tokens.js";
+import { useWorkspaceStore } from "../store/workspace-store.js";
+import { SURFACE, BORDER, TEXT, SPACING, BUTTON, TYPO } from "./workbench-tokens.js";
 import { useButtonHover } from "./use-button-hover.js";
 
 /**
@@ -16,9 +17,20 @@ export function Toolbar() {
   const rightSidebarVisible = useWorkbenchStore((s) => s.rightSidebarVisible);
   const bottomPanelVisible = useWorkbenchStore((s) => s.bottomPanelVisible);
 
+  const createFlow = useWorkspaceStore((s) => s.createFlow);
+
   const leftBtn = useButtonHover();
+  const newFlowBtn = useButtonHover();
   const runBtn = useButtonHover();
   const assistBtn = useButtonHover();
+
+  /**
+   * Handle Run button click by showing the local run preview panel.
+   * Actual execution starts from BottomPreview so the user can review/edit the prompt first.
+   */
+  const handleRun = () => {
+    toggleBottomPanel();
+  };
 
   // Four-state background logic for toggle buttons:
   //   active+hovered → BUTTON.activeBg, active+not-hovered → SURFACE.xxx,
@@ -52,7 +64,7 @@ export function Toolbar() {
         userSelect: "none",
       }}
     >
-      {/* Left section: branding + toggle */}
+      {/* Left section: branding + new flow + toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
         <button
           onClick={toggleLeftSidebar}
@@ -71,13 +83,26 @@ export function Toolbar() {
         <span style={{ color: TEXT.primary, fontWeight: 600, fontSize: 14 }}>
           AgentsFlow
         </span>
+        <button
+          onClick={() => { createFlow(); }}
+          title="New Flow"
+          style={{
+            ...newFlowBtn.buttonStyle,
+            background: newFlowBtn.hoverBg,
+            padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
+            fontSize: TYPO.smallFontSize,
+          }}
+          {...newFlowBtn.hoverProps}
+        >
+          ＋ New
+        </button>
       </div>
 
       {/* Center section: view toggles */}
       <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
         <button
-          onClick={toggleBottomPanel}
-          title="Toggle Run Preview"
+          onClick={handleRun}
+          title="Run Flow"
           style={{
             ...runBtn.buttonStyle,
             background: runBg,

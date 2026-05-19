@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FlowScheduler, type AdapterResolver } from "@agentsflow/flow-engine";
 import { DefaultAgentRegistry } from "@agentsflow/agent-registry";
+import { FakeAgentAdapter } from "@agentsflow/testing-kit";
 import { LocalStore, type SqlExecutor } from "@agentsflow/local-store";
 import type { IpcChannelMap } from "@agentsflow/shared-contracts";
 
@@ -21,6 +22,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export async function createApp(options?: { db?: SqlExecutor }): Promise<void> {
   // 1. Initialize agent registry
   const registry = new DefaultAgentRegistry();
+
+  // Register the FakeAgentAdapter for demo/testing
+  registry.registerAdapter(
+    {
+      adapterKind: "fake",
+      displayName: "Fake Agent Adapter",
+      adapterVersion: "0.1.0",
+      contractVersion: "0.1.0",
+      supportedCapabilities: [
+        "streaming",
+        "structured-output",
+        "tool-calls",
+        "delegation-proposal",
+        "interrupt-resume",
+        "multi-turn-session",
+      ],
+      limitations: ["Not a real agent — returns canned responses only"],
+    },
+    () => new FakeAgentAdapter(),
+  );
 
   // 2. Initialize flow scheduler with adapter resolver
   const adapterResolver: AdapterResolver = (kind) => registry.getAdapter(kind);

@@ -8,8 +8,13 @@ export {
   GraphSchema,
   NodeDefSchema,
   EdgeDefSchema,
+  PortDefSchema,
+  ParamDefSchema,
+  CustomNodeSpecSchema,
+  PortDataTypeSchema,
   RuntimeSchema,
   LayoutSchema,
+  ExtensionsSchema,
   NodeBindingSchema,
   NodePositionSchema,
   type FlowDefinition,
@@ -18,11 +23,17 @@ export {
   type Graph,
   type NodeDef,
   type EdgeDef,
+  type PortDef,
+  type ParamDef,
+  type CustomNodeSpec,
+  type PortDataType,
   type Runtime,
   type Layout,
+  type Extensions,
   type NodeBinding,
   type NodePosition,
 } from "./schema/flow-definition.js";
 
-export { parseFlowYaml, serializeFlowYaml, validateFlowDefinition, safeValidateFlowDefinition } from "./lib/parse.js";
+export { parseFlowYaml, parseFlowYamlWithSemantics, serializeFlowYaml, validateFlowDefinition, safeValidateFlowDefinition, safeValidateFlowDefinitionWithSemantics } from "./lib/parse.js";
 export { migrateFlow } from "./lib/migrate.js";
+export { validateFlowSemantics, isPortTypeCompatible, type SemanticValidationResult } from "./lib/validate.js";

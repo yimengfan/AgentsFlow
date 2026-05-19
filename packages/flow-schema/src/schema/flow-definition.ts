@@ -71,13 +71,139 @@ export const AgentDefSchema = z.object({
 
 export type AgentDef = z.infer<typeof AgentDefSchema>;
 
+// ─── Port & Parameter Definitions ───────────────────────────
+
+/**
+ * Data type identifiers for port values.
+ * Used to validate that connected ports have compatible types.
+ */
+export const PortDataTypeSchema = z.enum([
+  "string",
+  "number",
+  "boolean",
+  "object",
+  "array",
+  "any",
+  "flow",        // Control flow signal (no data, just execution order)
+  "prompt",      // Prompt/template string
+  "documents",   // Loaded document array
+  "plan",        // Structured plan output
+  "score",       // Evaluation score result
+  "artifact",    // Generic artifact reference
+]);
+
+export type PortDataType = z.infer<typeof PortDataTypeSchema>;
+
+/**
+ * A single input or output port on a node.
+ */
+export const PortDefSchema = z.object({
+  /** Unique port ID within this node (e.g. "in", "out", "prompt", "data") */
+  portId: z.string().min(1),
+  /** Human-readable label */
+  label: z.string().optional(),
+  /** Data type carried by this port */
+  dataType: PortDataTypeSchema,
+  /** Whether this port must be connected for the node to execute */
+  required: z.boolean().optional().default(true),
+  /** Description / tooltip */
+  description: z.string().optional(),
+  /** Default value when no connection is made (only for optional input ports) */
+  defaultValue: z.unknown().optional(),
+});
+
+export type PortDef = z.infer<typeof PortDefSchema>;
+
+/**
+ * Parameter definition for a node's configuration form.
+ */
+export const ParamDefSchema = z.object({
+  /** Unique parameter key within this node */
+  paramId: z.string().min(1),
+  /** Human-readable label */
+  label: z.string().optional(),
+  /** Parameter type — determines the UI control and validation */
+  paramType: z.enum([
+    "string",
+    "number",
+    "boolean",
+    "select",
+    "multiselect",
+    "path",
+    "url",
+    "secret",
+    "json",
+    "code",
+  ]),
+  /** Whether this parameter is required */
+  required: z.boolean().optional().default(true),
+  /** Default value */
+  defaultValue: z.unknown().optional(),
+  /** For select/multiselect: available options */
+  options: z.array(z.object({
+    value: z.string(),
+    label: z.string().optional(),
+  })).optional(),
+  /** Description / tooltip */
+  description: z.string().optional(),
+  /** Zod-like validation hints (min, max, pattern, etc.) */
+  validation: z.record(z.unknown()).optional(),
+  /** Group name for organizing parameters in the UI */
+  group: z.string().optional(),
+});
+
+export type ParamDef = z.infer<typeof ParamDefSchema>;
+
+/**
+ * Custom node spec embedded in a flow definition.
+ * This lets flows extend the palette/runtime without patching built-in registries.
+ */
+export const CustomNodeSpecSchema = z.object({
+  /** Machine-readable kind identifier (e.g. "loader.http-auth", "agent.main") */
+  kind: z.string().min(1),
+  /** Human-readable display label */
+  label: z.string().min(1),
+  /** Category path for palette grouping, using "/" as separator (e.g. "Loader/HTTP", "Agent/Main") */
+  category: z.string().min(1),
+  /** Detailed description / tooltip */
+  description: z.string().min(1),
+  /** Icon identifier for the palette */
+  icon: z.string().min(1),
+  /** Input port definitions */
+  inputPorts: z.array(PortDefSchema).optional().default([]),
+  /** Output port definitions */
+  outputPorts: z.array(PortDefSchema).optional().default([]),
+  /** Parameter definitions for this node's config form */
+  params: z.array(ParamDefSchema).optional().default([]),
+  /** Compatible node kind for legacy nodeType mapping */
+  legacyNodeType: z.string().optional(),
+  /** Tags for filtering in the palette */
+  tags: z.array(z.string()).optional().default([]),
+  /** Whether this kind appears in the palette (false = internal-only) */
+  visible: z.boolean().optional().default(true),
+  /** Maximum instances allowed per flow (0 = unlimited) */
+  maxInstances: z.number().int().nonnegative().optional().default(0),
+  /** Flow direction hint: "horizontal" = left→right (default), "vertical" = top→bottom */
+  flowDirection: z.enum(["horizontal", "vertical"]).optional().default("horizontal"),
+});
+
+export type CustomNodeSpec = z.infer<typeof CustomNodeSpecSchema>;
+
 // ─── Graph ──────────────────────────────────────────────────
 
 export const NodeDefSchema = z.object({
   /** Unique node ID within the flow */
   nodeId: z.string().min(1),
-  /** Node type: agent, router, input, output, loop, parallel */
-  nodeType: z.enum(["agent", "router", "input", "output", "loop", "parallel"]),
+  /**
+   * Node type (legacy enum for backward compat).
+   * New flows should use nodeKind instead.
+   */
+  nodeType: z.enum(["agent", "router", "input", "output", "loop", "parallel"]).optional(),
+  /**
+   * Machine-readable node kind (e.g. "loader.http-auth", "agent.main", "control.plan-loop").
+   * Takes precedence over nodeType when present.
+   */
+  nodeKind: z.string().min(1).optional(),
   /** Human-readable label */
   label: z.string().optional(),
   /** Node description */
@@ -86,6 +212,14 @@ export const NodeDefSchema = z.object({
   agentId: z.string().optional(),
   /** Node-specific config (varies by nodeType) */
   config: z.record(z.unknown()).optional().default({}),
+  /** Input port definitions */
+  inputPorts: z.array(PortDefSchema).optional().default([]),
+  /** Output port definitions */
+  outputPorts: z.array(PortDefSchema).optional().default([]),
+  /** Parameter definitions for this node's config form */
+  params: z.array(ParamDefSchema).optional().default([]),
+  /** Category path for grouping in the node palette (e.g. "Loader/HTTP", "Agent/Main") */
+  category: z.string().optional(),
 });
 
 export type NodeDef = z.infer<typeof NodeDefSchema>;
@@ -95,12 +229,16 @@ export const EdgeDefSchema = z.object({
   source: z.string().min(1),
   /** Target node ID */
   target: z.string().min(1),
-  /** Source handle (for multi-output nodes) */
+  /** Source handle / port ID (for multi-output nodes) */
   sourceHandle: z.string().optional(),
+  /** Target handle / port ID (for multi-input nodes) */
+  targetHandle: z.string().optional(),
   /** Edge label */
   label: z.string().optional(),
   /** Condition for conditional edges */
   condition: z.string().optional(),
+  /** Whether this edge carries data (vs. just control flow) */
+  dataEdge: z.boolean().optional().default(false),
 });
 
 export type EdgeDef = z.infer<typeof EdgeDefSchema>;
@@ -188,6 +326,15 @@ export const LayoutSchema = z.object({
 
 export type Layout = z.infer<typeof LayoutSchema>;
 
+// ─── Extensions ─────────────────────────────────────────────
+
+export const ExtensionsSchema = z.object({
+  /** Additional node specifications loaded by this flow at runtime. */
+  customNodeSpecs: z.array(CustomNodeSpecSchema).optional().default([]),
+});
+
+export type Extensions = z.infer<typeof ExtensionsSchema>;
+
 // ─── Top-level Flow Definition ──────────────────────────────
 
 export const FlowDefinitionSchema = z.object({
@@ -203,6 +350,8 @@ export const FlowDefinitionSchema = z.object({
   runtime: RuntimeSchema.optional().default({}),
   /** Layout and binding information */
   layout: LayoutSchema.optional().default({}),
+  /** Flow-local extensions such as custom node specifications */
+  extensions: ExtensionsSchema.optional().default({}),
 });
 
 export type FlowDefinition = z.infer<typeof FlowDefinitionSchema>;

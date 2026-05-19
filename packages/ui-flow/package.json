@@ -18,13 +18,17 @@
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@agentsflow/agent-contracts": "workspace:*",
     "@agentsflow/flow-schema": "workspace:*",
+    "@agentsflow/flow-engine": "workspace:*",
+    "@agentsflow/node-spec-registry": "workspace:^",
     "@agentsflow/platform-adapter": "workspace:*",
     "@agentsflow/shared-contracts": "workspace:*",
+    "@agentsflow/testing-kit": "workspace:*",
     "@monaco-editor/react": "^4.6.0",
     "@xyflow/react": "^12.6.0",
     "react": "^19.0.0",
@@ -45,6 +49,7 @@
   ],
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "vitest": "^3.0.0"
   }
 }

@@ -32,6 +32,9 @@ importers:
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../../packages/shared-contracts
+      '@agentsflow/testing-kit':
+        specifier: workspace:*
+        version: link:../../packages/testing-kit
       '@agentsflow/ui-flow':
         specifier: workspace:*
         version: link:../../packages/ui-flow
@@ -69,6 +72,9 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@22.19.19)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   apps/studio:
     dependencies:
@@ -129,7 +135,11 @@ importers:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@22.19.19)(yaml@2.9.0)
 
-  packages/agent-contracts: {}
+  packages/agent-contracts:
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/agent-registry:
     dependencies:
@@ -139,6 +149,10 @@ importers:
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/flow-engine:
     dependencies:
@@ -151,6 +165,10 @@ importers:
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/flow-schema:
     dependencies:
@@ -160,6 +178,10 @@ importers:
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/local-store:
     dependencies:
@@ -169,6 +191,16 @@ importers:
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
+
+  packages/node-spec-registry:
+    dependencies:
+      '@agentsflow/flow-schema':
+        specifier: workspace:*
+        version: link:../flow-schema
 
   packages/platform-adapter:
     dependencies:
@@ -183,7 +215,11 @@ importers:
         specifier: ^19.0.0
         version: 19.2.6
 
-  packages/shared-contracts: {}
+  packages/shared-contracts:
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/testing-kit:
     dependencies:
@@ -203,15 +239,27 @@ importers:
 
   packages/ui-flow:
     dependencies:
+      '@agentsflow/agent-contracts':
+        specifier: workspace:*
+        version: link:../agent-contracts
+      '@agentsflow/flow-engine':
+        specifier: workspace:*
+        version: link:../flow-engine
       '@agentsflow/flow-schema':
         specifier: workspace:*
         version: link:../flow-schema
+      '@agentsflow/node-spec-registry':
+        specifier: workspace:^
+        version: link:../node-spec-registry
       '@agentsflow/platform-adapter':
         specifier: workspace:*
         version: link:../platform-adapter
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
+      '@agentsflow/testing-kit':
+        specifier: workspace:*
+        version: link:../testing-kit
       '@monaco-editor/react':
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -237,6 +285,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
 packages:
 
@@ -1653,12 +1704,12 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   glob@8.1.0:
     resolution: {integrity: sha512-r8hpEjiQEYlF2QU0df3dS+nxxSIreXQS1qRhMJM0Q5NDdR386C7jb7Hwwod8Fgiuex+k0GFjgft18yvxm5XoCQ==}
     engines: {node: '>=12'}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   global-agent@3.0.0:
     resolution: {integrity: sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q==}

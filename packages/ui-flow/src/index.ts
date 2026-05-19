@@ -6,6 +6,10 @@ export { FlowCanvas } from "./components/flow-canvas.js";
 export { FlowEditor } from "./components/flow-editor.js";
 export { useFlowStore } from "./store/flow-store.js";
 
+// Node creation context menu
+export { NodeContextMenu } from "./components/node-context-menu.js";
+export { portColor, PORT_COLORS } from "./components/node-context-menu.js";
+
 // Workbench (VS Code-like layout)
 export { Workbench } from "./components/workbench.js";
 export { Toolbar } from "./components/toolbar.js";
@@ -18,10 +22,22 @@ export { TabBar } from "./components/tab-bar.js";
 export { BottomPreview } from "./components/bottom-preview.js";
 export { AssistantPanel } from "./components/assistant-panel.js";
 export { FlowEditorSurface } from "./components/flow-editor-surface.js";
+export { NodeInspector, type YamlRevealTarget } from "./components/node-inspector.js";
 
 // Workbench stores
 export { useWorkbenchStore } from "./store/workbench-store.js";
 export { useWorkspaceStore } from "./store/workspace-store.js";
+export { useRuntimeStore } from "./store/runtime-store.js";
+
+// Runtime adapter extension point for browser/local preview
+export {
+  registerRuntimeAdapterExtension,
+  unregisterRuntimeAdapterExtension,
+  listRuntimeAdapterExtensions,
+  resolveRuntimeAdapter,
+  type RuntimeAdapterExtension,
+  type RuntimeAdapterExtensionContext,
+} from "./lib/runtime-adapter-registry.js";
 
 // Workbench styling tokens & theme system
 export type { Palette, SemanticTokens, ThemePreset } from "./components/workbench-tokens.js";

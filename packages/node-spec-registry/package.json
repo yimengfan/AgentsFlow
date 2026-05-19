@@ -1,7 +1,7 @@
 {
-  "name": "@agentsflow/shared-contracts",
+  "name": "@agentsflow/node-spec-registry",
   "version": "0.1.0",
-  "description": "Shared types, IPC channel definitions, error codes, and common DTOs",
+  "description": "Node specification registry for AgentsFlow — defines node kinds, ports, parameters, and categories",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,13 +15,11 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
-  "devDependencies": {
-    "vitest": "^3.0.0"
+  "dependencies": {
+    "@agentsflow/flow-schema": "workspace:*"
   },
   "license": "MIT",
-  "keywords": ["agentsflow", "shared", "contracts", "ipc"]
+  "keywords": ["agentsflow", "node", "spec", "registry"]
 }

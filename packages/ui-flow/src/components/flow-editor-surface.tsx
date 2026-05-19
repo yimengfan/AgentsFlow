@@ -1,18 +1,18 @@
+import { useCallback } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import Editor from "@monaco-editor/react";
+import { ReactFlowProvider } from "@xyflow/react";
 import { FlowCanvas } from "./flow-canvas.js";
+import { NodeInspector, type YamlRevealTarget } from "./node-inspector.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { SURFACE, RESIZE_HANDLE } from "./workbench-tokens.js";
+import type { NodeSpec } from "@agentsflow/node-spec-registry";
 
 /**
- * FlowEditorSurface — center-only editor content: canvas + YAML split.
+ * FlowEditorSurface — center-only editor content: canvas with conditional inspector.
  *
- * This is the "editor" part extracted from the old monolithic FlowEditor.
- * It reads document state from WorkspaceStore (not the legacy FlowStore)
- * and syncs edits back.
- *
- * Layout invariant: fills its parent container.
- * Must NOT set position or outer dimensions — the center panel controls that.
+ * Layout: Canvas fills the full area when no node is selected.
+ * When a node is selected, a right-side inspector panel slides in via
+ * react-resizable-panels. No bottom YAML editor panel.
  *
  * Props:
  *   flowPath — identifies which document in WorkspaceStore to edit
@@ -26,6 +26,18 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
   const doc = useWorkspaceStore((s) => s.documents.get(flowPath));
   const updateYaml = useWorkspaceStore((s) => s.updateYaml);
   const selectNode = useWorkspaceStore((s) => s.selectNode);
+  const addNode = useWorkspaceStore((s) => s.addNode);
+  const addEdge = useWorkspaceStore((s) => s.addEdge);
+  const moveNode = useWorkspaceStore((s) => s.moveNode);
+  const removeNode = useWorkspaceStore((s) => s.removeNode);
+  const removeEdge = useWorkspaceStore((s) => s.removeEdge);
+  const handleRevealYaml = useCallback(
+    (_target: YamlRevealTarget) => {
+      // Reveal YAML is currently disabled (no YAML editor panel).
+      // This callback is kept for future re-enablement.
+    },
+    [],
+  );
 
   if (!doc) {
     return (
@@ -43,61 +55,57 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
     );
   }
 
+  const hasSelection = doc.selectedNodeId !== null;
+
   return (
-    <PanelGroup direction="vertical" style={{ height: "100%" }}>
-      {/* Canvas */}
-      <Panel defaultSize={60} minSize={20}>
+    <PanelGroup direction="horizontal" style={{ height: "100%" }}>
+      {/* Canvas — fills entire width when no node is selected */}
+      <Panel id="canvas" order={1} defaultSize={hasSelection ? 72 : 100} minSize={55}>
         <div style={{ height: "100%", width: "100%" }}>
-          <FlowCanvas
-            flow={doc.flow}
-            selectedNodeId={doc.selectedNodeId}
-            onSelectNode={selectNode}
-            onAddEdge={(edge) => {
-              // Add edge via flow update
-              if (!doc.flow) return;
-              const updated = {
-                ...doc.flow,
-                graph: {
-                  ...doc.flow.graph,
-                  edges: [...doc.flow.graph.edges, edge],
-                },
-              };
-              useWorkspaceStore.getState().updateFlow(flowPath, updated);
-            }}
-          />
+          <ReactFlowProvider>
+            <FlowCanvas
+              flow={doc.flow}
+              selectedNodeId={doc.selectedNodeId}
+              onSelectNode={selectNode}
+              onAddEdge={(edge) => {
+                addEdge(flowPath, edge);
+              }}
+              onMoveNode={(nodeId: string, position: { x: number; y: number }) => {
+                moveNode(flowPath, nodeId, position);
+              }}
+              onAddNode={(spec: NodeSpec, position: { x: number; y: number }) => {
+                return addNode(flowPath, spec, position);
+              }}
+              onRemoveNode={(nodeId: string) => {
+                removeNode(flowPath, nodeId);
+              }}
+              onRemoveEdge={(source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
+                removeEdge(flowPath, source, target, sourceHandle, targetHandle);
+              }}
+            />
+          </ReactFlowProvider>
         </div>
       </Panel>
-      <PanelResizeHandle
-        style={{
-          height: RESIZE_HANDLE.size,
-          background: RESIZE_HANDLE.background,
-        }}
-      />
-      {/* YAML Editor */}
-      <Panel defaultSize={40} minSize={15}>
-        <div style={{ height: "100%", width: "100%" }}>
-          {/* @ts-expect-error Monaco Editor JSX type mismatch — works at runtime */}
-          <Editor
-            height="100%"
-            language="yaml"
-            theme="vs-dark"
-            value={doc.yamlSource}
-            onChange={(value: string | undefined) => {
-              if (value !== undefined) {
-                updateYaml(flowPath, value);
-              }
-            }}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              tabSize: 2,
+
+      {/* Inspector panel — only rendered when a node is selected */}
+      {hasSelection ? (
+        <>
+          <PanelResizeHandle
+            style={{
+              width: RESIZE_HANDLE.size,
+              background: RESIZE_HANDLE.background,
             }}
           />
-        </div>
-      </Panel>
+          <Panel id="inspector" order={2} defaultSize={28} minSize={18} maxSize={45}>
+            <NodeInspector
+              flowPath={flowPath}
+              flow={doc.flow}
+              selectedNodeId={doc.selectedNodeId}
+              onRevealYaml={handleRevealYaml}
+            />
+          </Panel>
+        </>
+      ) : null}
     </PanelGroup>
   );
 }

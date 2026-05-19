@@ -49,18 +49,25 @@ export const minimalFlow: FlowDefinition = {
         label: "Start Node",
         agentId: "test-agent",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
       {
         nodeId: "end",
         nodeType: "output",
         label: "End Node",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
     ],
     edges: [
       {
         source: "start",
         target: "end",
+        dataEdge: false,
       },
     ],
     startNodeId: "start",
@@ -83,6 +90,9 @@ export const minimalFlow: FlowDefinition = {
       },
     ],
     viewport: { x: 0, y: 0, zoom: 1 },
+  },
+  extensions: {
+    customNodeSpecs: [],
   },
 };
 
@@ -153,6 +163,9 @@ export const multiAgentFlow: FlowDefinition = {
         nodeType: "input",
         label: "User Input",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
       {
         nodeId: "plan",
@@ -160,6 +173,9 @@ export const multiAgentFlow: FlowDefinition = {
         label: "Plan",
         agentId: "planner",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
       {
         nodeId: "execute",
@@ -167,18 +183,24 @@ export const multiAgentFlow: FlowDefinition = {
         label: "Execute",
         agentId: "executor",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
       {
         nodeId: "output",
         nodeType: "output",
         label: "Result",
         config: {},
+        inputPorts: [],
+        outputPorts: [],
+        params: [],
       },
     ],
     edges: [
-      { source: "input", target: "plan" },
-      { source: "plan", target: "execute" },
-      { source: "execute", target: "output" },
+      { source: "input", target: "plan", dataEdge: false },
+      { source: "plan", target: "execute", dataEdge: false },
+      { source: "execute", target: "output", dataEdge: false },
     ],
     startNodeId: "input",
   },
@@ -201,8 +223,10 @@ export const multiAgentFlow: FlowDefinition = {
     ],
     viewport: { x: 0, y: 0, zoom: 0.8 },
   },
+  extensions: {
+    customNodeSpecs: [],
+  },
 };
-
 /** YAML string for the minimal flow, used in round-trip tests */
 export const minimalFlowYaml = `meta:
   schemaVersion: '1.0'

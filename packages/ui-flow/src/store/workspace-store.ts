@@ -10,12 +10,14 @@ import { create } from "zustand";
  * the store itself is pure state and does not import platform-adapter.
  */
 
-import type { FlowDefinition } from "@agentsflow/flow-schema";
+import type { FlowDefinition, NodeDef, EdgeDef } from "@agentsflow/flow-schema";
+import type { NodeSpec } from "@agentsflow/node-spec-registry";
 import {
   parseFlowYaml,
   serializeFlowYaml,
   safeValidateFlowDefinition,
 } from "@agentsflow/flow-schema";
+import { upsertNodePosition, validateConnection } from "../lib/flow-graph.js";
 
 /** Per-document editing state */
 export interface DocumentState {
@@ -69,9 +71,53 @@ export interface WorkspaceActions {
   markSaved: (flowPath: string) => void;
   /** Get the active document state */
   getActiveDocument: () => DocumentState | null;
+  /** Add a node to the active flow, created from a NodeSpec at the given canvas position */
+  addNode: (flowPath: string, spec: NodeSpec, position: { x: number; y: number }) => string;
+  /** Add an edge to a flow if it passes connection constraints */
+  addEdge: (flowPath: string, edge: EdgeDef) => { success: boolean; error?: string };
+  /** Persist a node move from the canvas */
+  moveNode: (flowPath: string, nodeId: string, position: { x: number; y: number }) => void;
+  /** Update a single config value on a node */
+  updateNodeConfig: (flowPath: string, nodeId: string, paramId: string, value: unknown) => void;
+  /** Remove a node from a flow by nodeId */
+  removeNode: (flowPath: string, nodeId: string) => void;
+  /** Remove an edge from a flow by source+target identifiers */
+  removeEdge: (flowPath: string, source: string, target: string, sourceHandle?: string, targetHandle?: string) => void;
+  /** Create a new untitled flow with a starter template and open it */
+  createFlow: () => string;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;
+
+/** Counter for generating unique untitled flow names. */
+let untitledCounter = 0;
+
+function buildUpdatedDocument(doc: DocumentState, flow: FlowDefinition): DocumentState {
+  const validation = safeValidateFlowDefinition(flow);
+  const yamlSource = serializeFlowYaml(flow);
+  const validationErrors = validation.success
+    ? [] as readonly string[]
+    : validation.error.errors.map((error) => error.message);
+
+  return {
+    ...doc,
+    flow: validation.success ? flow : null,
+    yamlSource,
+    validationErrors,
+    isDirty: true,
+  };
+}
+
+function commitDocument(
+  setState: (partial: Partial<WorkspaceStore>) => void,
+  documents: ReadonlyMap<string, DocumentState>,
+  flowPath: string,
+  doc: DocumentState,
+): void {
+  const nextDocuments = new Map(documents);
+  nextDocuments.set(flowPath, doc);
+  setState({ documents: nextDocuments });
+}
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   flowList: [],
@@ -184,23 +230,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const doc = documents.get(flowPath);
     if (!doc) return;
 
-    const validation = safeValidateFlowDefinition(flow);
-    const yaml = serializeFlowYaml(flow);
-    const validationErrors = validation.success
-      ? [] as readonly string[]
-      : validation.error.errors.map((e) => e.message);
-
-    const updated: DocumentState = {
-      ...doc,
-      flow: validation.success ? flow : null,
-      yamlSource: yaml,
-      validationErrors,
-      isDirty: true,
-    };
-
-    const newDocs = new Map(documents);
-    newDocs.set(flowPath, updated);
-    set({ documents: newDocs });
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, flow));
   },
 
   selectNode: (nodeId) => {
@@ -248,9 +278,455 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ documents: newDocs });
   },
 
+  addNode: (flowPath, spec, position) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return "";
+
+    if (spec.maxInstances > 0) {
+      const instanceCount = doc.flow.graph.nodes.filter((node) => node.nodeKind === spec.kind).length;
+      if (instanceCount >= spec.maxInstances) {
+        return "";
+      }
+    }
+
+    // Generate a unique node ID: kind prefix + random suffix
+    const kindPrefix = spec.kind.replace(/\./g, "_");
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const nodeId = `${kindPrefix}_${suffix}`;
+
+    // Build NodeDef from spec
+    const newNode: NodeDef = {
+      nodeId,
+      nodeKind: spec.kind,
+      label: spec.label,
+      category: spec.category,
+      config: {},
+      inputPorts: [...spec.inputPorts],
+      outputPorts: [...spec.outputPorts],
+      params: [...spec.params],
+    };
+
+    // Add position to layout
+    const currentPositions = doc.flow.layout?.positions ?? [];
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        nodes: [...doc.flow.graph.nodes, newNode],
+      },
+      layout: {
+        ...doc.flow.layout,
+        positions: [...currentPositions, { nodeId, x: position.x, y: position.y }],
+      },
+    };
+
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+
+    return nodeId;
+  },
+
+  addEdge: (flowPath, edge) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) {
+      return { success: false, error: "Flow document not found" };
+    }
+
+    const validation = validateConnection(doc.flow, edge);
+    if (!validation.valid || !validation.edge) {
+      return { success: false, ...(validation.reason ? { error: validation.reason } : {}) };
+    }
+
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        edges: [...doc.flow.graph.edges, validation.edge],
+      },
+    };
+
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+    return { success: true };
+  },
+
+  moveNode: (flowPath, nodeId, position) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return;
+
+    const updatedFlow = upsertNodePosition(doc.flow, nodeId, position);
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+  },
+
+  updateNodeConfig: (flowPath, nodeId, paramId, value) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return;
+
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        nodes: doc.flow.graph.nodes.map((node) => {
+          if (node.nodeId !== nodeId) {
+            return node;
+          }
+
+          const nextConfig = {
+            ...(node.config ?? {}),
+            [paramId]: value,
+          };
+
+          return {
+            ...node,
+            config: nextConfig,
+          };
+        }),
+      },
+    };
+
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+  },
+
+  removeNode: (flowPath, nodeId) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return;
+
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        nodes: doc.flow.graph.nodes.filter((n) => n.nodeId !== nodeId),
+        edges: doc.flow.graph.edges.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId,
+        ),
+      },
+      layout: {
+        ...doc.flow.layout,
+        positions: (doc.flow.layout?.positions ?? []).filter(
+          (p) => p.nodeId !== nodeId,
+        ),
+      },
+    };
+
+    const updated: DocumentState = {
+      ...buildUpdatedDocument(doc, updatedFlow),
+      selectedNodeId: doc.selectedNodeId === nodeId ? null : doc.selectedNodeId,
+    };
+
+    commitDocument(set, documents, flowPath, updated);
+  },
+
+  removeEdge: (flowPath, source, target, sourceHandle, targetHandle) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return;
+
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        edges: doc.flow.graph.edges.filter((e) => {
+          if (e.source !== source || e.target !== target) return true;
+          if (sourceHandle !== undefined && e.sourceHandle !== sourceHandle) return true;
+          if (targetHandle !== undefined && e.targetHandle !== targetHandle) return true;
+          return false;
+        }),
+      },
+    };
+
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+  },
+
   getActiveDocument: () => {
     const { activeFlowPath, documents } = get();
     if (!activeFlowPath) return null;
     return documents.get(activeFlowPath) ?? null;
   },
+
+  createFlow: () => {
+    untitledCounter++;
+    const name = `Untitled-${untitledCounter}`;
+    const flowPath = `untitled://${name}`;
+    const yamlSource = generateStarterYaml(name);
+    get().openFlow(flowPath, yamlSource);
+    return flowPath;
+  },
 }));
+
+// ---------------------------------------------------------------------------
+// Starter YAML template — left-to-right plan-execute-evaluate loop
+// Flow direction: horizontal (left → right)
+// Nodes: loader.work-dir → agent.main (prompt) → control.plan-loop → agent.sub (execute) → agent.main (evaluate) → control.finish
+// ---------------------------------------------------------------------------
+
+function generateStarterYaml(name: string): string {
+  return `meta:
+  schemaVersion: '1.0'
+  name: ${name}
+  description: 默认流程：加载 → 主Agent提示词 → 计划循环 → 子Agent执行 → 主Agent评分 → 结束
+  version: 0.1.0
+  tags:
+    - starter
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: fake
+      modelProfile:
+        systemPrompt: You are a planning and evaluation agent.
+      toolPolicy:
+        allowedCapabilities: []
+        blockedTools: []
+        approvalRequirement: destructive_only
+      memoryPolicy:
+        visibleScopes:
+          - run
+        writableScopes:
+          - run
+      subagentPolicy:
+        allowedAgents:
+          - sub-agent
+        switchModes:
+          - flow-forced
+        returnStrategy: summary-only
+      timeouts:
+        turnMs: 60000
+        sessionMs: 300000
+      budgets:
+        maxSteps: 10
+    - agentId: sub-agent
+      adapterKind: fake
+      modelProfile:
+        systemPrompt: You are an execution agent. Carry out the plan.
+      toolPolicy:
+        allowedCapabilities: []
+        blockedTools: []
+        approvalRequirement: destructive_only
+      memoryPolicy:
+        visibleScopes:
+          - run
+        writableScopes:
+          - run
+          - node
+      subagentPolicy:
+        allowedAgents: []
+        switchModes: []
+        returnStrategy: summary-only
+      timeouts:
+        turnMs: 60000
+        sessionMs: 300000
+      budgets:
+        maxSteps: 20
+graph:
+  nodes:
+    - nodeId: loader-workdir
+      nodeKind: loader.work-dir
+      label: 加载工作目录
+      category: Loader/WorkDir
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: data
+          dataType: documents
+      params: []
+    - nodeId: main-prompt
+      nodeKind: agent.main
+      label: 主Agent - 提示词输入
+      category: Agent/Main
+      agentId: main-agent
+      config:
+        turnMode: prompt
+        systemPrompt: 分析输入数据，生成任务提示词。
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: data
+          dataType: any
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+        - portId: plan
+          dataType: plan
+      params: []
+    - nodeId: plan-loop
+      nodeKind: control.plan-loop
+      label: 计划-执行循环
+      category: Control/PlanLoop
+      config:
+        maxIterations: 5
+        completionThreshold: 0.8
+        evaluatePrompt: 评估执行结果，给出 0-1 的评分。
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: prompt
+          dataType: prompt
+      outputPorts:
+        - portId: plan
+          dataType: plan
+        - portId: execute
+          dataType: flow
+        - portId: evaluate
+          dataType: flow
+        - portId: done
+          dataType: flow
+        - portId: score
+          dataType: score
+      params:
+        - paramId: maxIterations
+          paramType: number
+          defaultValue: 5
+          description: 最大循环次数
+        - paramId: completionThreshold
+          paramType: number
+          defaultValue: 0.8
+          description: 完成评分阈值
+    - nodeId: sub-execute
+      nodeKind: agent.sub
+      label: 子Agent - 执行
+      category: Agent/Sub
+      agentId: sub-agent
+      config:
+        turnMode: normal
+        systemPrompt: 按照计划步骤执行任务。
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: prompt
+          dataType: prompt
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+      params: []
+    - nodeId: main-evaluate
+      nodeKind: agent.main
+      label: 主Agent - 评分
+      category: Agent/Main
+      agentId: main-agent
+      config:
+        turnMode: evaluate
+        evaluatePrompt: >-
+          评估执行结果，给出 0-1 评分。返回 JSON：
+          {"score": <number>, "canComplete": <boolean>, "reason": "<string>"}
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: data
+          dataType: any
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+        - portId: score
+          dataType: score
+      params: []
+    - nodeId: finish
+      nodeKind: control.finish
+      label: 结束
+      category: Control/Finish
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: result
+          dataType: any
+      outputPorts: []
+      params: []
+  edges:
+    # 加载 → 主Agent提示词输入
+    - source: loader-workdir
+      target: main-prompt
+      sourceHandle: out
+      targetHandle: in
+    # 主Agent → 计划循环
+    - source: main-prompt
+      target: plan-loop
+      sourceHandle: out
+      targetHandle: in
+    # 计划循环 → 执行
+    - source: plan-loop
+      target: sub-execute
+      sourceHandle: execute
+      targetHandle: in
+    # 执行 → 评分
+    - source: sub-execute
+      target: main-evaluate
+      sourceHandle: result
+      targetHandle: data
+      dataEdge: true
+    - source: sub-execute
+      target: main-evaluate
+      sourceHandle: out
+      targetHandle: in
+    # 评分 → 循环回计划（未完成时）
+    - source: main-evaluate
+      target: plan-loop
+      sourceHandle: score
+      targetHandle: prompt
+      dataEdge: true
+    - source: main-evaluate
+      target: plan-loop
+      sourceHandle: out
+      targetHandle: in
+    # 循环完成 → 结束
+    - source: plan-loop
+      target: finish
+      sourceHandle: done
+      targetHandle: in
+    # 加载的数据传入主Agent
+    - source: loader-workdir
+      target: main-prompt
+      sourceHandle: data
+      targetHandle: data
+      dataEdge: true
+  startNodeId: loader-workdir
+runtime:
+  maxConcurrency: 1
+  defaultTurnTimeoutMs: 60000
+  persistEvents: true
+  persistMemorySnapshots: false
+layout:
+  positions:
+    - nodeId: loader-workdir
+      x: 50
+      y: 200
+    - nodeId: main-prompt
+      x: 300
+      y: 200
+    - nodeId: plan-loop
+      x: 550
+      y: 200
+    - nodeId: sub-execute
+      x: 800
+      y: 350
+    - nodeId: main-evaluate
+      x: 800
+      y: 50
+    - nodeId: finish
+      x: 1050
+      y: 200
+  nodeBindings:
+    - nodeId: main-prompt
+      agentId: main-agent
+    - nodeId: sub-execute
+      agentId: sub-agent
+    - nodeId: main-evaluate
+      agentId: main-agent
+  viewport:
+    x: 0
+    y: 0
+    zoom: 0.8
+`;
+}
