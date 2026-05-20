@@ -22,12 +22,29 @@ export { TabBar } from "./components/tab-bar.js";
 export { BottomPreview } from "./components/bottom-preview.js";
 export { AssistantPanel } from "./components/assistant-panel.js";
 export { FlowEditorSurface } from "./components/flow-editor-surface.js";
+export { TextFilePreview } from "./components/text-file-preview.js";
+export { BinaryPlaceholder } from "./components/binary-placeholder.js";
 export { NodeInspector, type YamlRevealTarget } from "./components/node-inspector.js";
 
 // Workbench stores
 export { useWorkbenchStore } from "./store/workbench-store.js";
-export { useWorkspaceStore } from "./store/workspace-store.js";
+export { useWorkspaceStore, type DocumentType, type DocumentState } from "./store/workspace-store.js";
+export { useWorkspaceTreeStore } from "./store/workspace-tree-store.js";
 export { useRuntimeStore } from "./store/runtime-store.js";
+
+// Workspace file tree
+export { FileTreeItem } from "./components/file-tree-item.js";
+export { FileTreeContextMenu } from "./components/file-tree-context-menu.js";
+export { WorkspaceDropdown } from "./components/workspace-dropdown.js";
+export type { TreeNode } from "./lib/workspace-tree.js";
+export {
+  buildTreeNode,
+  updateNodeInTree,
+  sortTreeEntries,
+  findNodeInTree,
+  getParentPath,
+  getBaseName,
+} from "./lib/workspace-tree.js";
 
 // Runtime adapter extension point for browser/local preview
 export {

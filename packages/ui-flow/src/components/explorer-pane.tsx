@@ -1,61 +1,104 @@
-import { useWorkbenchStore } from "../store/workbench-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
+import { useWorkspaceTreeStore } from "../store/workspace-tree-store.js";
 import { usePlatform } from "@agentsflow/platform-adapter";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
+import { buildTreeNode } from "../lib/workspace-tree.js";
+import type { TreeNode } from "../lib/workspace-tree.js";
+import { FileTreeItem } from "./file-tree-item.js";
+import { FileTreeContextMenu } from "./file-tree-context-menu.js";
 import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
 
 /**
  * ExplorerPane — file/directory browser in the left sidebar.
  *
- * Uses usePlatform().flow.list() to load the flow list.
- * Clicking a flow opens it in the center editor.
+ * Shows a tree view of the current workspace directory.
+ * Clicking a flow file opens it in the center editor.
+ * Right-clicking shows a context menu with "New Flow", "Refresh", "Copy Path".
  *
- * Layout invariant: fills the sidebar content area.
- * Must NOT set width or height — the sidebar panel controls that.
+ * If no workspace is open, shows a prompt to open one.
  */
 
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  node: TreeNode | null;
+}
+
+const INITIAL_CONTEXT_MENU: ContextMenuState = {
+  visible: false,
+  x: 0,
+  y: 0,
+  node: null,
+};
+
 export function ExplorerPane() {
-  const flowList = useWorkspaceStore((s) => s.flowList);
-  const setFlowList = useWorkspaceStore((s) => s.setFlowList);
-  const openFlow = useWorkspaceStore((s) => s.openFlow);
-  const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
-  const isLoading = useWorkspaceStore((s) => s.isLoading);
+  const platform = usePlatform();
+  const rootPath = useWorkspaceTreeStore((s) => s.rootPath);
+  const tree = useWorkspaceTreeStore((s) => s.tree);
+  const isLoading = useWorkspaceTreeStore((s) => s.isLoading);
+  const error = useWorkspaceTreeStore((s) => s.error);
+  const setRootPath = useWorkspaceTreeStore((s) => s.setRootPath);
+  const setTree = useWorkspaceTreeStore((s) => s.setTree);
+  const setLoading = useWorkspaceTreeStore((s) => s.setLoading);
+  const setError = useWorkspaceTreeStore((s) => s.setError);
+  const addRecentWorkspace = useWorkspaceTreeStore((s) => s.addRecentWorkspace);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(INITIAL_CONTEXT_MENU);
 
-  const { flow } = usePlatform();
-
-  // Load flow list on mount
+  // Load root directory contents when workspace is opened
   useEffect(() => {
+    if (!rootPath) return;
+
     let cancelled = false;
+    setLoading(true);
+    setError(null);
+
     (async () => {
       try {
-        const list = await flow.list();
+        const entries = await platform.workspace.readDir(rootPath);
         if (!cancelled) {
-          setFlowList(
-            list.map((f: any) => ({
-              flowPath: f.flowPath,
-              name: f.name ?? f.flowPath,
-              nodeCount: f.nodeCount ?? 0,
-            })),
+          const nodes = entries.map((entry) =>
+            buildTreeNode(entry as { name: string; path: string; isDirectory: boolean; isFlowFile: boolean }),
           );
+          setTree(nodes);
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Failed to load flow list:", err);
+        if (!cancelled) {
+          setError(String(err));
+          setLoading(false);
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [flow, setFlowList]);
 
-  const handleOpenFlow = useCallback(
-    async (flowPath: string) => {
-      try {
-        const yaml = await flow.load(flowPath);
-        openFlow(flowPath, yaml);
-      } catch (err) {
-        console.error("Failed to load flow:", flowPath, err);
+    return () => { cancelled = true; };
+  }, [rootPath, platform, setTree, setLoading, setError]);
+
+  const handleOpenWorkspace = useCallback(async () => {
+    try {
+      const selectedPath = await platform.workspace.openDialog();
+      if (selectedPath) {
+        setRootPath(selectedPath);
+        addRecentWorkspace(selectedPath);
       }
-    },
-    [flow, openFlow],
-  );
+    } catch (err) {
+      console.error("Failed to open workspace dialog:", err);
+    }
+  }, [platform, setRootPath, addRecentWorkspace]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      node,
+    });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(INITIAL_CONTEXT_MENU);
+  }, []);
 
   return (
     <div
@@ -78,12 +121,32 @@ export function ExplorerPane() {
           letterSpacing: 1,
           borderBottom: `1px solid ${BORDER.default}`,
           flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
-        Explorer
+        <span>Explorer</span>
+        {rootPath && (
+          <button
+            onClick={handleOpenWorkspace}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: TEXT.muted,
+              cursor: "pointer",
+              fontSize: 14,
+              padding: "0 2px",
+              lineHeight: 1,
+            }}
+            title="Open another workspace"
+          >
+            📂
+          </button>
+        )}
       </div>
 
-      {/* File list */}
+      {/* Content */}
       <div
         style={{
           flex: 1,
@@ -91,7 +154,64 @@ export function ExplorerPane() {
           padding: `${SPACING.xs}px 0`,
         }}
       >
-        {flowList.length === 0 && (
+        {!rootPath ? (
+          // No workspace open — show prompt
+          <div
+            style={{
+              padding: SPACING.md,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: SPACING.sm,
+            }}
+          >
+            <div
+              style={{
+                color: TEXT.muted,
+                fontSize: TYPO.fontSize,
+                textAlign: "center",
+                marginBottom: SPACING.sm,
+              }}
+            >
+              No workspace open
+            </div>
+            <button
+              onClick={handleOpenWorkspace}
+              style={{
+                background: ACCENT.indigo,
+                color: "#fff",
+                border: "none",
+                borderRadius: BUTTON.borderRadius,
+                padding: `${SPACING.sm}px ${SPACING.md}px`,
+                cursor: "pointer",
+                fontSize: TYPO.fontSize,
+                fontWeight: 500,
+                transition: `background-color ${BUTTON.transitionMs}ms ease`,
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = BUTTON.primaryHoverBg;
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = ACCENT.indigo;
+              }}
+            >
+              Open Folder
+            </button>
+          </div>
+        ) : error ? (
+          // Error state
+          <div
+            style={{
+              padding: SPACING.md,
+              color: ACCENT.errorRed,
+              fontSize: TYPO.fontSize,
+              textAlign: "center",
+            }}
+          >
+            Error: {error}
+          </div>
+        ) : isLoading ? (
+          // Loading state
           <div
             style={{
               padding: SPACING.md,
@@ -100,45 +220,23 @@ export function ExplorerPane() {
               textAlign: "center",
             }}
           >
-            {isLoading ? "Loading..." : "No flows found"}
+            Loading...
           </div>
+        ) : (
+          // File tree
+          tree.map((node) => (
+            <FileTreeItem
+              key={node.path}
+              node={node}
+              depth={0}
+              onContextMenu={handleContextMenu}
+            />
+          ))
         )}
-
-        {flowList.map((f) => {
-          const isActive = f.flowPath === activeFlowPath;
-          return (
-            <button
-              key={f.flowPath}
-              onClick={() => handleOpenFlow(f.flowPath)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: `${SPACING.sm}px ${SPACING.md}px`,
-                background: isActive ? ACCENT.indigo + "26" : "transparent",
-                borderLeft: isActive
-                  ? `2px solid ${BORDER.active}`
-                  : "2px solid transparent",
-                borderRight: "none",
-                borderTop: "none",
-                borderBottom: "none",
-                color: isActive ? TEXT.primary : TEXT.secondary,
-                cursor: "pointer",
-                textAlign: "left",
-                fontSize: TYPO.fontSize,
-                borderRadius: BUTTON.borderRadius,
-                transition: `background-color ${BUTTON.transitionMs}ms ease, color ${BUTTON.transitionMs}ms ease`,
-              }}
-            >
-              <div style={{ fontWeight: isActive ? 500 : 400 }}>
-                {f.name}
-              </div>
-              <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.muted, marginTop: 2 }}>
-                {f.nodeCount} nodes
-              </div>
-            </button>
-          );
-        })}
       </div>
+
+      {/* Context menu */}
+      <FileTreeContextMenu state={contextMenu} onClose={handleCloseContextMenu} />
     </div>
   );
 }

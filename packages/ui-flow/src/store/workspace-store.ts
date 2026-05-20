@@ -12,6 +12,7 @@ import { create } from "zustand";
 
 import type { FlowDefinition, NodeDef, EdgeDef } from "@agentsflow/flow-schema";
 import type { NodeSpec } from "@agentsflow/node-spec-registry";
+import type { PlatformApi } from "@agentsflow/platform-adapter";
 import {
   parseFlowYaml,
   serializeFlowYaml,
@@ -19,13 +20,18 @@ import {
 } from "@agentsflow/flow-schema";
 import { upsertNodePosition, validateConnection } from "../lib/flow-graph.js";
 
+/** Document type — determines how the center workspace renders the file. */
+export type DocumentType = "flow" | "text" | "binary";
+
 /** Per-document editing state */
 export interface DocumentState {
   /** Flow path (unique key) */
   flowPath: string;
+  /** Document type — flow, text, or binary */
+  docType: DocumentType;
   /** Raw YAML source */
   yamlSource: string;
-  /** Parsed flow definition (null if YAML is invalid) */
+  /** Parsed flow definition (null if YAML is invalid or not a flow doc) */
   flow: FlowDefinition | null;
   /** Validation errors */
   validationErrors: readonly string[];
@@ -55,6 +61,8 @@ export interface WorkspaceActions {
   setFlowList: (list: readonly { flowPath: string; name: string; nodeCount: number }[]) => void;
   /** Open a flow tab (creates DocumentState if needed) */
   openFlow: (flowPath: string, yamlSource: string) => void;
+  /** Open a non-flow file tab (text or binary) */
+  openFile: (filePath: string, content: string, docType: "text" | "binary") => void;
   /** Close a flow tab */
   closeFlow: (flowPath: string) => void;
   /** Set active tab */
@@ -85,6 +93,8 @@ export interface WorkspaceActions {
   removeEdge: (flowPath: string, source: string, target: string, sourceHandle?: string, targetHandle?: string) => void;
   /** Create a new untitled flow with a starter template and open it */
   createFlow: () => string;
+  /** Create a new flow file in the given directory, open it, and return its path */
+  createFlowInWorkspace: (dirPath: string, fileName: string, platform: PlatformApi) => Promise<string>;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;
@@ -153,6 +163,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     const doc: DocumentState = {
       flowPath,
+      docType: "flow",
       yamlSource,
       flow,
       validationErrors,
@@ -168,6 +179,35 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       documents: newDocs,
       openTabs: [...openTabs, flowPath],
       activeFlowPath: flowPath,
+    });
+  },
+
+  openFile: (filePath, content, docType) => {
+    const { documents, openTabs } = get();
+    if (documents.has(filePath)) {
+      // Already open — just activate
+      set({ activeFlowPath: filePath });
+      return;
+    }
+
+    const doc: DocumentState = {
+      flowPath: filePath,
+      docType,
+      yamlSource: content,
+      flow: null,
+      validationErrors: [],
+      isDirty: false,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+    };
+
+    const newDocs = new Map(documents);
+    newDocs.set(filePath, doc);
+
+    set({
+      documents: newDocs,
+      openTabs: [...openTabs, filePath],
+      activeFlowPath: filePath,
     });
   },
 
@@ -197,6 +237,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const { documents } = get();
     const doc = documents.get(flowPath);
     if (!doc) return;
+
+    // Only re-parse as flow if this is a flow document
+    if (doc.docType !== "flow") {
+      const updated: DocumentState = {
+        ...doc,
+        yamlSource: yaml,
+        isDirty: true,
+      };
+      const newDocs = new Map(documents);
+      newDocs.set(flowPath, updated);
+      set({ documents: newDocs });
+      return;
+    }
 
     let flow: FlowDefinition | null = null;
     let validationErrors: readonly string[] = [];
@@ -454,6 +507,29 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     get().openFlow(flowPath, yamlSource);
     return flowPath;
   },
+
+  createFlowInWorkspace: async (dirPath: string, fileName: string, platform: PlatformApi): Promise<string> => {
+    // Ensure the fileName ends with .yml
+    const normalizedName = fileName.endsWith(".yml") || fileName.endsWith(".yaml")
+      ? fileName
+      : `${fileName}.yml`;
+
+    // Build the full file path
+    const sep = dirPath.includes("/") ? "/" : "\\";
+    const filePath = `${dirPath}${sep}${normalizedName}`;
+
+    // Extract name for the YAML metadata
+    const name = normalizedName.replace(/\.(yml|yaml)$/, "");
+    const yamlSource = generateStarterYaml(name);
+
+    // Write the file via platform API
+    await platform.workspace.createFile(filePath, yamlSource);
+
+    // Open the new flow
+    get().openFlow(filePath, yamlSource);
+
+    return filePath;
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -463,7 +539,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 // ---------------------------------------------------------------------------
 
 function generateStarterYaml(name: string): string {
-  return `meta:
+  return `agentsflow: true
+meta:
   schemaVersion: '1.0'
   name: ${name}
   description: 默认流程：加载 → 主Agent提示词 → 计划循环 → 子Agent执行 → 主Agent评分 → 结束

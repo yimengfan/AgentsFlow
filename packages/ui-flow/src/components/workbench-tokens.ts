@@ -196,6 +196,8 @@ export type SemanticTokens = {
     readonly editor: string;
     readonly panel: string;
     readonly assistant: string;
+    readonly hover: string;
+    readonly input: string;
   };
   readonly BORDER: {
     readonly default: string;
@@ -266,6 +268,8 @@ function resolveTokens(preset: ThemePreset): SemanticTokens {
       editor: p.bgBase,
       panel: p.bgSurface1,
       assistant: p.bgBase,
+      hover: p.bgSurface3,
+      input: p.bgBase,
     },
 
     BORDER: {

@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../store/workbench-store.js";
-import { useWorkspaceStore } from "../store/workspace-store.js";
 import { SURFACE, BORDER, TEXT, SPACING, BUTTON, TYPO } from "./workbench-tokens.js";
 import { useButtonHover } from "./use-button-hover.js";
+import { WorkspaceDropdown } from "./workspace-dropdown.js";
 
 /**
  * Toolbar — top bar with branding, view toggles, and action buttons.
@@ -17,10 +17,7 @@ export function Toolbar() {
   const rightSidebarVisible = useWorkbenchStore((s) => s.rightSidebarVisible);
   const bottomPanelVisible = useWorkbenchStore((s) => s.bottomPanelVisible);
 
-  const createFlow = useWorkspaceStore((s) => s.createFlow);
-
   const leftBtn = useButtonHover();
-  const newFlowBtn = useButtonHover();
   const runBtn = useButtonHover();
   const assistBtn = useButtonHover();
 
@@ -64,7 +61,7 @@ export function Toolbar() {
         userSelect: "none",
       }}
     >
-      {/* Left section: branding + new flow + toggle */}
+      {/* Left section: branding + workspace dropdown + toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
         <button
           onClick={toggleLeftSidebar}
@@ -83,19 +80,7 @@ export function Toolbar() {
         <span style={{ color: TEXT.primary, fontWeight: 600, fontSize: 14 }}>
           AgentsFlow
         </span>
-        <button
-          onClick={() => { createFlow(); }}
-          title="New Flow"
-          style={{
-            ...newFlowBtn.buttonStyle,
-            background: newFlowBtn.hoverBg,
-            padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
-            fontSize: TYPO.smallFontSize,
-          }}
-          {...newFlowBtn.hoverProps}
-        >
-          ＋ New
-        </button>
+        <WorkspaceDropdown />
       </div>
 
       {/* Center section: view toggles */}

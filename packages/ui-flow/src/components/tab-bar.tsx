@@ -1,12 +1,21 @@
-import { useWorkspaceStore } from "../store/workspace-store.js";
+import { useWorkspaceStore, type DocumentType } from "../store/workspace-store.js";
 import { SURFACE, BORDER, TEXT, SPACING, TYPO, BUTTON } from "./workbench-tokens.js";
 
 /**
- * TabBar — horizontal row of open flow tabs.
+ * TabBar — horizontal row of open file/flow tabs.
  *
  * Layout invariant: fixed height 35px at the top of the center workspace.
  * Must NOT set width — the center panel controls that.
  */
+
+/** Get a tab icon based on document type. */
+function getDocIcon(docType: DocumentType): string {
+  switch (docType) {
+    case "flow": return "🔷";
+    case "text": return "📄";
+    case "binary": return "📦";
+  }
+}
 
 /** Common interactive style for tab items — cursor + transition per uipro spec. */
 const tabInteractiveStyle: React.CSSProperties = {
@@ -39,6 +48,7 @@ export function TabBar() {
         const doc = documents.get(flowPath);
         const isActive = flowPath === activeFlowPath;
         const name = doc?.flowPath.split("/").pop() ?? flowPath;
+        const docType = doc?.docType ?? "flow";
 
         return (
           <div
@@ -60,6 +70,9 @@ export function TabBar() {
               minWidth: 0,
             }}
           >
+            <span style={{ fontSize: 11, flexShrink: 0 }}>
+              {getDocIcon(docType)}
+            </span>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
               {name}
             </span>

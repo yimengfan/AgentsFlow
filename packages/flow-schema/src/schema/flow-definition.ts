@@ -338,6 +338,8 @@ export type Extensions = z.infer<typeof ExtensionsSchema>;
 // ─── Top-level Flow Definition ──────────────────────────────
 
 export const FlowDefinitionSchema = z.object({
+  /** Explicit AgentsFlow marker — optional, used for quick identification */
+  agentsflow: z.boolean().optional(),
   /** Flow metadata */
   meta: FlowMetaSchema,
   /** Agent definitions */
@@ -352,6 +354,6 @@ export const FlowDefinitionSchema = z.object({
   layout: LayoutSchema.optional().default({}),
   /** Flow-local extensions such as custom node specifications */
   extensions: ExtensionsSchema.optional().default({}),
-});
+}).passthrough();
 
 export type FlowDefinition = z.infer<typeof FlowDefinitionSchema>;

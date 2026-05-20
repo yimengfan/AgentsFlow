@@ -31,37 +31,37 @@ function getApiBase(): string {
 
 const API_BASE = getApiBase();
 
-async function request<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...opts?.headers,
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
-}
-
 export function createHttpAdapter(baseUrl?: string): PlatformApi {
   const base = baseUrl ?? API_BASE;
+
+  async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+    const res = await fetch(`${base}${path}`, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        ...opts?.headers,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status} ${res.statusText}`);
+    }
+    return res.json() as Promise<T>;
+  }
 
   return {
     platform: "web",
 
     flow: {
-      list: () => request<readonly any[]>(`${base}/flows`),
-      load: (flowPath) => request<string>(`${base}/flows/${encodeURIComponent(flowPath)}`),
+      list: () => request<readonly any[]>(`/flows`),
+      load: (flowPath) => request<string>(`/flows/${encodeURIComponent(flowPath)}`),
       save: (flowPath, content) =>
-        request<void>(`${base}/flows/${encodeURIComponent(flowPath)}`, {
+        request<void>(`/flows/${encodeURIComponent(flowPath)}`, {
           method: "PUT",
           body: JSON.stringify({ content }),
         }),
       validate: (content) =>
         request<{ valid: boolean; errors?: string[]; warnings?: string[] }>(
-          `${base}/flows/validate`,
+          `/flows/validate`,
           {
             method: "POST",
             body: JSON.stringify({ content }),
@@ -71,34 +71,51 @@ export function createHttpAdapter(baseUrl?: string): PlatformApi {
 
     run: {
       start: (flowPath, input) =>
-        request<{ runId: string }>(`${base}/runs`, {
+        request<{ runId: string }>(`/runs`, {
           method: "POST",
           body: JSON.stringify({ flowPath, input }),
         }),
       pause: (runId) =>
-        request<void>(`${base}/runs/${encodeURIComponent(runId)}/pause`, { method: "POST" }),
+        request<void>(`/runs/${encodeURIComponent(runId)}/pause`, { method: "POST" }),
       resume: (runId) =>
-        request<void>(`${base}/runs/${encodeURIComponent(runId)}/resume`, { method: "POST" }),
+        request<void>(`/runs/${encodeURIComponent(runId)}/resume`, { method: "POST" }),
       abort: (runId) =>
-        request<void>(`${base}/runs/${encodeURIComponent(runId)}/abort`, { method: "POST" }),
+        request<void>(`/runs/${encodeURIComponent(runId)}/abort`, { method: "POST" }),
       getStatus: (runId) =>
-        request<any>(`${base}/runs/${encodeURIComponent(runId)}/status`),
+        request<any>(`/runs/${encodeURIComponent(runId)}/status`),
     },
 
     agent: {
-      listAdapters: () => request<readonly any[]>(`${base}/agents`),
+      listAdapters: () => request<readonly any[]>(`/agents`),
       getAdapter: (adapterKind) =>
-        request<any>(`${base}/agents/${encodeURIComponent(adapterKind)}`),
+        request<any>(`/agents/${encodeURIComponent(adapterKind)}`),
     },
 
     store: {
       query: (query, params) =>
-        request<unknown>(`${base}/store/query`, {
+        request<unknown>(`/store/query`, {
           method: "POST",
           body: JSON.stringify({ query, params }),
         }),
       getRunEvents: (runId, limit) =>
-        request<readonly any[]>(`${base}/store/runs/${encodeURIComponent(runId)}/events?limit=${limit ?? 100}`),
+        request<readonly any[]>(`/store/runs/${encodeURIComponent(runId)}/events?limit=${limit ?? 100}`),
+    },
+
+    workspace: {
+      openDialog: () => request<string | null>("/workspace/open-dialog", { method: "POST" }),
+      readDir: (dirPath) =>
+        request<readonly any[]>(`/workspace/read-dir?path=${encodeURIComponent(dirPath)}`),
+      createFile: (filePath, content) =>
+        request<void>("/workspace/create-file", {
+          method: "POST",
+          body: JSON.stringify({ filePath, content }),
+        }),
+      stat: (path) =>
+        request<any | null>(`/workspace/stat?path=${encodeURIComponent(path)}`),
+      readFile: (path) =>
+        request<any | null>(`/workspace/read-file?path=${encodeURIComponent(path)}`),
+      suggestPaths: () =>
+        request<readonly { name: string; path: string }[]>("/workspace/suggest-paths"),
     },
 
     on: () => {

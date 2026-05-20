@@ -30,12 +30,28 @@ export interface StoreApi {
   getRunEvents(runId: string, limit?: number): Promise<readonly EventSummary[]>;
 }
 
+export interface WorkspaceApi {
+  /** Open a native folder-picker dialog. Returns selected path or null. */
+  openDialog(): Promise<string | null>;
+  /** Read a directory's immediate children (1 level, lazy load). */
+  readDir(dirPath: string): Promise<readonly DirEntry[]>;
+  /** Create a new file with the given content. */
+  createFile(filePath: string, content: string): Promise<void>;
+  /** Get file/directory metadata. */
+  stat(path: string): Promise<FileStat | null>;
+  /** Read a file's content. Returns null if file cannot be read. */
+  readFile(path: string): Promise<FileContent | null>;
+  /** Get suggested workspace paths (home, Desktop, etc). Web mode only. */
+  suggestPaths?: () => Promise<readonly SuggestedPath[]>;
+}
+
 export interface PlatformApi {
   readonly platform: "electron" | "web";
   readonly flow: FlowApi;
   readonly run: RunApi;
   readonly agent: AgentApi;
   readonly store: StoreApi;
+  readonly workspace: WorkspaceApi;
   /** Subscribe to platform events. Returns an unsubscribe function. */
   on(channel: string, callback: (...args: any[]) => void): () => void;
 }
@@ -78,4 +94,34 @@ export interface EventSummary {
   readonly timestamp: number;
   readonly nodeId?: string;
   readonly agentId?: string;
+}
+
+/** A single entry in a directory listing (file or subdirectory). */
+export interface DirEntry {
+  readonly name: string;
+  readonly path: string;
+  readonly isDirectory: boolean;
+  readonly isFlowFile: boolean;
+}
+
+/** File/directory metadata from stat(). */
+export interface FileStat {
+  readonly path: string;
+  readonly isDirectory: boolean;
+  readonly size: number;
+  readonly modifiedAt: number;
+}
+
+/** A suggested workspace path for web mode folder picker. */
+export interface SuggestedPath {
+  readonly name: string;
+  readonly path: string;
+}
+
+/** Content of a file read from the filesystem. */
+export interface FileContent {
+  /** The file content as a UTF-8 string (empty if binary). */
+  readonly content: string;
+  /** Whether the file appears to be binary (contains null bytes). */
+  readonly isBinary: boolean;
 }

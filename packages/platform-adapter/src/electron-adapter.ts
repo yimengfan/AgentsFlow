@@ -29,6 +29,13 @@ interface ElectronIpcBridge {
     query: (options: any) => Promise<any[]>;
     getRunEvents: (runId: string) => Promise<any[]>;
   };
+  workspace: {
+    openDialog: () => Promise<string | null>;
+    readDir: (dirPath: string) => Promise<any[]>;
+    createFile: (filePath: string, content: string) => Promise<boolean>;
+    stat: (path: string) => Promise<any | null>;
+    readFile: (path: string) => Promise<any | null>;
+  };
   on: (channel: string, callback: (...args: any[]) => void) => () => void;
 }
 
@@ -61,6 +68,14 @@ export function createElectronAdapter(): PlatformApi {
     store: {
       query: (query, params) => ipc.store.query({ query, params }),
       getRunEvents: (runId, limit) => ipc.store.getRunEvents(runId),
+    },
+
+    workspace: {
+      openDialog: () => ipc.workspace.openDialog(),
+      readDir: (dirPath) => ipc.workspace.readDir(dirPath),
+      createFile: (filePath, content) => ipc.workspace.createFile(filePath, content).then(() => {}),
+      stat: (path) => ipc.workspace.stat(path),
+      readFile: (path) => ipc.workspace.readFile(path),
     },
 
     on: (channel, callback) => ipc.on(channel, callback),

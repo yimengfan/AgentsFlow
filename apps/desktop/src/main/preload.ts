@@ -40,6 +40,16 @@ const api = {
       ipcRenderer.invoke("store:getRunEvents", runId),
   },
 
+  // Workspace operations
+  workspace: {
+    openDialog: (): Promise<string | null> => ipcRenderer.invoke("workspace:openDialog"),
+    readDir: (dirPath: string): Promise<any[]> => ipcRenderer.invoke("workspace:readDir", dirPath),
+    createFile: (filePath: string, content: string): Promise<boolean> =>
+      ipcRenderer.invoke("workspace:createFile", filePath, content),
+    stat: (path: string): Promise<any | null> => ipcRenderer.invoke("workspace:stat", path),
+    readFile: (path: string): Promise<any | null> => ipcRenderer.invoke("workspace:readFile", path),
+  },
+
   // Event subscription
   on: (channel: string, callback: (...args: any[]) => void): (() => void) => {
     const listener = (_event: any, ...args: any[]) => callback(...args);

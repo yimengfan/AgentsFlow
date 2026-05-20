@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FlowScheduler, type AdapterResolver } from "@agentsflow/flow-engine";
@@ -194,5 +194,85 @@ function registerIpcHandlers(
 
   ipcMain.handle("store:getRunEvents", async (_e: IpcMainInvokeEvent, runId: string) => {
     return store?.queryEvents({ runId }) ?? [];
+  });
+
+  // Workspace operations
+  ipcMain.handle("workspace:openDialog", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+      title: "打开工作区",
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0]!;
+  });
+
+  ipcMain.handle("workspace:readDir", async (_e: IpcMainInvokeEvent, dirPath: string) => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      return entries
+        .filter((entry) => !entry.name.startsWith(".")) // hide dotfiles
+        .map((entry) => {
+          const fullPath = path.join(dirPath, entry.name);
+          const isFlowFile = !entry.isDirectory() && /\.(yml|yaml)$/.test(entry.name);
+          return {
+            name: entry.name,
+            path: fullPath,
+            isDirectory: entry.isDirectory(),
+            isFlowFile,
+          };
+        })
+        .sort((a, b) => {
+          // Directories first, then alphabetical
+          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle("workspace:createFile", async (_e: IpcMainInvokeEvent, filePath: string, content: string) => {
+    const fs = await import("node:fs/promises");
+    await fs.writeFile(filePath, content, "utf-8");
+    return true;
+  });
+
+  ipcMain.handle("workspace:stat", async (_e: IpcMainInvokeEvent, targetPath: string) => {
+    const fs = await import("node:fs/promises");
+    try {
+      const stat = await fs.stat(targetPath);
+      return {
+        path: targetPath,
+        isDirectory: stat.isDirectory(),
+        size: stat.size,
+        modifiedAt: stat.mtimeMs,
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("workspace:readFile", async (_e: IpcMainInvokeEvent, targetPath: string) => {
+    const fs = await import("node:fs/promises");
+    try {
+      const stat = await fs.stat(targetPath);
+      if (stat.isDirectory()) return null;
+      // Read as buffer to detect binary content
+      const buf = await fs.readFile(targetPath);
+      // Simple binary detection: check for null bytes in first 8KB
+      const checkLen = Math.min(buf.length, 8192);
+      let isBinary = false;
+      for (let i = 0; i < checkLen; i++) {
+        if (buf[i] === 0) { isBinary = true; break; }
+      }
+      return {
+        content: isBinary ? "" : buf.toString("utf-8"),
+        isBinary,
+      };
+    } catch {
+      return null;
+    }
   });
 }

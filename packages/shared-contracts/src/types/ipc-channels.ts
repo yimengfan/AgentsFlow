@@ -29,6 +29,13 @@ export interface IpcChannelMap {
   // Store
   "store:query": { input: { query: string; params?: readonly unknown[] }; output: unknown };
   "store:getRunEvents": { input: { runId: string; limit?: number }; output: readonly EventSummary[] };
+
+  // Workspace management
+  "workspace:openDialog": { input: void; output: string | null };
+  "workspace:readDir": { input: { dirPath: string }; output: readonly DirEntry[] };
+  "workspace:createFile": { input: { filePath: string; content: string }; output: void };
+  "workspace:stat": { input: { path: string }; output: FileStat | null };
+  "workspace:readFile": { input: { path: string }; output: FileContent | null };
 }
 
 /**
@@ -84,4 +91,38 @@ export interface EventSummary {
   readonly timestamp: number;
   readonly nodeId?: string;
   readonly agentId?: string;
+}
+
+// --- Workspace DTO types ---
+
+/** A single entry in a directory listing (file or subdirectory). */
+export interface DirEntry {
+  /** Base name of the file or directory */
+  readonly name: string;
+  /** Absolute or workspace-relative path */
+  readonly path: string;
+  /** Whether this entry is a directory */
+  readonly isDirectory: boolean;
+  /** Whether this entry is a flow file (.yml or .yaml) */
+  readonly isFlowFile: boolean;
+}
+
+/** File/directory metadata from stat(). */
+export interface FileStat {
+  /** Path that was stat'd */
+  readonly path: string;
+  /** Whether the path is a directory */
+  readonly isDirectory: boolean;
+  /** File size in bytes (0 for directories) */
+  readonly size: number;
+  /** Last modification timestamp (ms since epoch) */
+  readonly modifiedAt: number;
+}
+
+/** Content of a file read from the filesystem. */
+export interface FileContent {
+  /** The file content as a UTF-8 string (empty if binary). */
+  readonly content: string;
+  /** Whether the file appears to be binary (contains null bytes). */
+  readonly isBinary: boolean;
 }
