@@ -26,6 +26,7 @@
     "@agentsflow/flow-schema": "workspace:*",
     "@agentsflow/flow-engine": "workspace:*",
     "@agentsflow/node-spec-registry": "workspace:^",
+    "@agentsflow/pi-mono-runtime": "workspace:*",
     "@agentsflow/platform-adapter": "workspace:*",
     "@agentsflow/shared-contracts": "workspace:*",
     "@agentsflow/testing-kit": "workspace:*",

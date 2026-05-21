@@ -7,7 +7,9 @@ Active
 This document turns the flow-area implementation into an explicit maintenance contract.
 
 Use it together with:
+
 - `docs/adr/002-flow-runtime-extension.md` for architecture decisions
+- `docs/specs/002-runtime-binding.md` for the executable binding path and runtime drive sequence
 - `packages/flow-schema/src/schema/flow-definition.ts` for the canonical schema
 - `packages/node-spec-registry/src/specs.ts` for built-in node kinds
 
@@ -48,6 +50,83 @@ Inspector, left preview, and bottom run preview must render from one runtime-der
 Rules:
 - Prompt sources, inputs, outputs, and latest status are derived data.
 - Debug data is read-only with respect to YAML.
+
+## Binding Model
+
+### Executable binding path
+The executable binding path is:
+
+`graph.nodes[*].agentId -> agents.agentDefs[*].agentId -> agentDef.adapterKind -> runtime adapter extension -> concrete adapter transport`
+
+```mermaid
+flowchart LR
+  Node[graph.nodes[*]] --> AgentId[node.agentId]
+  AgentId --> AgentDef[agents.agentDefs[*]]
+  AgentDef --> AdapterKind[agentDef.adapterKind]
+  AdapterKind --> Registry[runtime-adapter-registry]
+  Registry --> Adapter[AgentAdapter instance]
+  Adapter --> Transport[provider transport]
+```
+
+Rules:
+- `graph.nodes[*].agentId` is the executable source of truth for mapping a node to an agent definition.
+- Runtime resolution must look up `agents.agentDefs[*]` by `agentId` before selecting an adapter.
+- `agentDef.adapterKind` is the only field that chooses the runtime adapter extension.
+- `layout.nodeBindings` is descriptive UI/layout metadata and must not replace runtime lookup unless the engine explicitly adopts it in the future.
+- `layout.nodeBindings[*].overrides` is currently reserved metadata; the runtime does not automatically merge these overrides into `agentDef` execution.
+
+### Current pi-mono binding
+The default starter flow currently binds `agent.main` and `agent.sub` nodes to `adapterKind: pi-mono`, then lets `@agentsflow/pi-mono-runtime` choose one of two transport styles:
+
+- DeepSeek-compatible transport when `adapterConfig.transport = deepseek` or the resolved base URL points at DeepSeek.
+- pi-mono HTTP transport when a pi-mono-compatible backend exposes `/sessions` and `/turns`.
+
+Configuration precedence for the pi-mono runtime is:
+
+1. Flow or agent `adapterConfig`
+2. Adapter constructor options
+3. `VITE_AGENTSFLOW_PI_MONO_*` or `AGENTSFLOW_PI_MONO_*`
+4. `VITE_AGENTSFLOW_LLM_*` fallback values
+
+## Runtime Drive Sequence
+
+The local preview runtime drives a flow through the following chain.
+
+```mermaid
+sequenceDiagram
+  participant UI as AssistantPanel
+  participant Store as useRuntimeStore.startFlow
+  participant Scheduler as FlowScheduler
+  participant Registry as resolveRuntimeAdapter
+  participant Executor as NodeExecutor
+  participant Adapter as PiMonoAgentAdapter
+  participant Transport as DeepSeek or pi-mono transport
+
+  UI->>Store: startFlow(flowPath, flow, { userPrompt })
+  Store->>Scheduler: startRun(flow, input)
+  loop Each executable node in graph order
+    Scheduler->>Scheduler: collect node input and turnMode
+    Scheduler->>Registry: resolveRuntimeAdapter(flow, agentDef)
+    Registry-->>Scheduler: AgentAdapter
+    Scheduler->>Executor: executeNode(node, flow, adapter, snapshot)
+    Executor->>Executor: resolveSessionId(runId + agentId)
+    Executor->>Executor: resolvePrompt(node.config, modelProfile, run input)
+    Executor->>Adapter: runTurn(invocation)
+    Adapter->>Transport: createSession() and runTurn()
+    Transport-->>Adapter: finalText, structuredOutput, usage
+    Adapter-->>Executor: AgentTurnResult
+    Executor-->>Scheduler: completed or failed result
+    Scheduler->>Scheduler: set node output and propagate ports
+  end
+```
+
+Rules:
+- `useRuntimeStore.startFlow(...)` is the UI entry point for local preview runs.
+- `FlowScheduler` owns graph traversal, node dispatch, and port propagation.
+- `NodeExecutor` owns prompt resolution, session reuse, invocation shaping, and adapter lifecycle events.
+- Session reuse is keyed by `runId + agentId`, so multiple nodes can share one adapter session when they target the same agent.
+- `turnMode` is determined by node configuration and passed through the invocation to the adapter.
+- Runtime outputs are written to `RunContext` and then re-derived into debug and timeline state; they are not written back into YAML.
 
 ## Node Spec Contract
 Every node kind must be expressible as a `NodeSpec`.

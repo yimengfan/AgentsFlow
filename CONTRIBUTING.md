@@ -38,6 +38,7 @@ git checkout -b feat/my-feature
 
 ### 2. Develop
 
+- Use the [documentation map](./docs/README.md) to find the authoritative ADR or spec for the area you touch
 - Follow the [code conventions](./.github/copilot-instructions.md)
 - ESM imports must include `.js` extensions
 - Use `readonly` for all DTO properties
@@ -55,7 +56,7 @@ pnpm build        # Clean build
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat(flow-engine): add loop iteration limit
 fix(platform-adapter): handle IPC timeout gracefully
 docs(readme): add architecture diagram
@@ -71,9 +72,13 @@ Open a Pull Request against `main`. CI will run typecheck + test + build.
 
 ## Project Structure
 
-See [MAINTENANCE.md](./MAINTENANCE.md) for the full architecture guide.
+Use [docs/README.md](./docs/README.md) as the primary document index.
 
-```
+- [MAINTENANCE.md](./MAINTENANCE.md) covers maintainer and operational topics
+- [docs/adr/](./docs/adr) contains architecture decisions
+- [docs/specs/](./docs/specs) contains executable maintenance contracts
+
+```text
 packages/          # Shared libraries (@agentsflow/*)
 apps/desktop/      # Electron desktop shell
 apps/web/          # Pure web app (Vite only)

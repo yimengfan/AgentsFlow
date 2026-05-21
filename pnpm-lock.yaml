@@ -202,6 +202,12 @@ importers:
         specifier: workspace:*
         version: link:../flow-schema
 
+  packages/pi-mono-runtime:
+    dependencies:
+      '@agentsflow/agent-contracts':
+        specifier: workspace:*
+        version: link:../agent-contracts
+
   packages/platform-adapter:
     dependencies:
       '@agentsflow/shared-contracts':
@@ -251,6 +257,9 @@ importers:
       '@agentsflow/node-spec-registry':
         specifier: workspace:^
         version: link:../node-spec-registry
+      '@agentsflow/pi-mono-runtime':
+        specifier: workspace:*
+        version: link:../pi-mono-runtime
       '@agentsflow/platform-adapter':
         specifier: workspace:*
         version: link:../platform-adapter

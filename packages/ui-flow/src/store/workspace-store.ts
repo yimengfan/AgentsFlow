@@ -533,9 +533,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Starter YAML template — left-to-right plan-execute-evaluate loop
+// Starter YAML template — left-to-right plan-execute-evaluate flow
 // Flow direction: horizontal (left → right)
-// Nodes: loader.work-dir → agent.main (prompt) → control.plan-loop → agent.sub (execute) → agent.main (evaluate) → control.finish
+// Nodes: loader.work-dir → agent.main (plan) → agent.sub (execute) → agent.main (evaluate) → control.finish
 // ---------------------------------------------------------------------------
 
 function generateStarterYaml(name: string): string {
@@ -543,16 +543,19 @@ function generateStarterYaml(name: string): string {
 meta:
   schemaVersion: '1.0'
   name: ${name}
-  description: 默认流程：加载 → 主Agent提示词 → 计划循环 → 子Agent执行 → 主Agent评分 → 结束
+  description: 默认流程：主Agent生成计划 → 子Agent执行 → 主Agent评分 → 结束
   version: 0.1.0
   tags:
     - starter
 agents:
   agentDefs:
     - agentId: main-agent
-      adapterKind: fake
+      adapterKind: pi-mono
       modelProfile:
+        model: deepseek-v4-flash
         systemPrompt: You are a planning and evaluation agent.
+      adapterConfig:
+        transport: deepseek
       toolPolicy:
         allowedCapabilities: []
         blockedTools: []
@@ -574,9 +577,12 @@ agents:
       budgets:
         maxSteps: 10
     - agentId: sub-agent
-      adapterKind: fake
+      adapterKind: pi-mono
       modelProfile:
+        model: deepseek-v4-flash
         systemPrompt: You are an execution agent. Carry out the plan.
+      adapterConfig:
+        transport: deepseek
       toolPolicy:
         allowedCapabilities: []
         blockedTools: []
@@ -615,15 +621,17 @@ graph:
       params: []
     - nodeId: main-prompt
       nodeKind: agent.main
-      label: 主Agent - 提示词输入
+      label: 主Agent - Plan
       category: Agent/Main
       agentId: main-agent
       config:
-        turnMode: prompt
-        systemPrompt: 分析输入数据，生成任务提示词。
+        turnMode: plan
+        userPrompt: 请根据用户输入生成一个简洁可执行的计划，输出重点步骤。
       inputPorts:
         - portId: in
           dataType: flow
+        - portId: prompt
+          dataType: prompt
         - portId: data
           dataType: any
       outputPorts:
@@ -634,39 +642,6 @@ graph:
         - portId: plan
           dataType: plan
       params: []
-    - nodeId: plan-loop
-      nodeKind: control.plan-loop
-      label: 计划-执行循环
-      category: Control/PlanLoop
-      config:
-        maxIterations: 5
-        completionThreshold: 0.8
-        evaluatePrompt: 评估执行结果，给出 0-1 的评分。
-      inputPorts:
-        - portId: in
-          dataType: flow
-        - portId: prompt
-          dataType: prompt
-      outputPorts:
-        - portId: plan
-          dataType: plan
-        - portId: execute
-          dataType: flow
-        - portId: evaluate
-          dataType: flow
-        - portId: done
-          dataType: flow
-        - portId: score
-          dataType: score
-      params:
-        - paramId: maxIterations
-          paramType: number
-          defaultValue: 5
-          description: 最大循环次数
-        - paramId: completionThreshold
-          paramType: number
-          defaultValue: 0.8
-          description: 完成评分阈值
     - nodeId: sub-execute
       nodeKind: agent.sub
       label: 子Agent - 执行
@@ -680,6 +655,8 @@ graph:
           dataType: flow
         - portId: prompt
           dataType: prompt
+        - portId: data
+          dataType: any
       outputPorts:
         - portId: out
           dataType: flow
@@ -722,21 +699,26 @@ graph:
       outputPorts: []
       params: []
   edges:
-    # 加载 → 主Agent提示词输入
+    # 加载 → 主Agent Plan
     - source: loader-workdir
       target: main-prompt
       sourceHandle: out
       targetHandle: in
-    # 主Agent → 计划循环
+    - source: loader-workdir
+      target: main-prompt
+      sourceHandle: data
+      targetHandle: data
+      dataEdge: true
+    # 主Agent Plan → 子Agent执行
     - source: main-prompt
-      target: plan-loop
+      target: sub-execute
       sourceHandle: out
       targetHandle: in
-    # 计划循环 → 执行
-    - source: plan-loop
+    - source: main-prompt
       target: sub-execute
-      sourceHandle: execute
-      targetHandle: in
+      sourceHandle: result
+      targetHandle: prompt
+      dataEdge: true
     # 执行 → 评分
     - source: sub-execute
       target: main-evaluate
@@ -747,27 +729,16 @@ graph:
       target: main-evaluate
       sourceHandle: out
       targetHandle: in
-    # 评分 → 循环回计划（未完成时）
+    # 评分 → 结束
     - source: main-evaluate
-      target: plan-loop
-      sourceHandle: score
-      targetHandle: prompt
+      target: finish
+      sourceHandle: result
+      targetHandle: result
       dataEdge: true
     - source: main-evaluate
-      target: plan-loop
+      target: finish
       sourceHandle: out
       targetHandle: in
-    # 循环完成 → 结束
-    - source: plan-loop
-      target: finish
-      sourceHandle: done
-      targetHandle: in
-    # 加载的数据传入主Agent
-    - source: loader-workdir
-      target: main-prompt
-      sourceHandle: data
-      targetHandle: data
-      dataEdge: true
   startNodeId: loader-workdir
 runtime:
   maxConcurrency: 1
@@ -782,15 +753,12 @@ layout:
     - nodeId: main-prompt
       x: 300
       y: 200
-    - nodeId: plan-loop
+    - nodeId: sub-execute
       x: 550
       y: 200
-    - nodeId: sub-execute
-      x: 800
-      y: 350
     - nodeId: main-evaluate
       x: 800
-      y: 50
+      y: 200
     - nodeId: finish
       x: 1050
       y: 200

@@ -176,6 +176,7 @@ function workspaceApiPlugin(): Plugin {
  * Uses HTTP adapter for backend communication.
  */
 export default defineConfig({
+  envDir: path.resolve(__dirname, "../.."),
   plugins: [react(), workspaceApiPlugin()],
   root: path.resolve(__dirname, "src"),
   base: "./",

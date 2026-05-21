@@ -293,12 +293,18 @@ export const NodePositionSchema = z.object({
 
 export type NodePosition = z.infer<typeof NodePositionSchema>;
 
+/**
+ * Descriptive node-agent binding metadata used by layout-aware tooling.
+ *
+ * Current runtime execution still resolves agents from `graph.nodes[*].agentId`.
+ * These bindings and overrides are not merged automatically by the engine.
+ */
 export const NodeBindingSchema = z.object({
-  /** The graph node this binding applies to */
+  /** The graph node this descriptive binding refers to */
   nodeId: z.string().min(1),
-  /** The agent to use for this node */
+  /** The agent associated with this node for layout and tooling metadata */
   agentId: z.string().min(1),
-  /** Per-node overrides of the agent definition */
+  /** Optional metadata reserved for future per-node tooling or runtime override support */
   overrides: z.object({
     modelProfile: AgentDefSchema.shape.modelProfile.optional(),
     toolPolicy: AgentDefSchema.shape.toolPolicy.optional(),
@@ -314,7 +320,7 @@ export type NodeBinding = z.infer<typeof NodeBindingSchema>;
 export const LayoutSchema = z.object({
   /** Node positions for the canvas */
   positions: z.array(NodePositionSchema).optional().default([]),
-  /** Node-agent bindings */
+  /** Optional descriptive node-agent bindings for layout-aware tooling */
   nodeBindings: z.array(NodeBindingSchema).optional().default([]),
   /** Canvas viewport settings */
   viewport: z.object({

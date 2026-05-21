@@ -5,6 +5,13 @@
 **Updated**: 2026-05-17  
 **Scope**: `@agentsflow/ui-flow`
 
+## Companion Docs
+
+Read this ADR together with:
+
+- `docs/README.md` for document ownership and reading order
+- `.github/copilot-instructions.md` for contributor guardrails and non-negotiable shell rules
+
 ## Context
 
 AgentsFlow previously used a monolithic `FlowEditor` component that combined the flow canvas, YAML editor, and sidebar into a single flat layout. As the app grew, this made it difficult to:
@@ -18,7 +25,7 @@ AgentsFlow previously used a monolithic `FlowEditor` component that combined the
 
 Adopt a **VS Code–style workbench layout** with the following strict component hierarchy:
 
-```
+```text
 Workbench (sole owner of 100vh × 100vw)
 ├── Toolbar (fixed height 40px, full width)
 │   ├── ☰ toggle left sidebar
@@ -44,7 +51,7 @@ Workbench (sole owner of 100vh × 100vw)
 ### Key files
 
 | File | Responsibility |
-|------|---------------|
+| ---- | -------------- |
 | `workbench.tsx` | Top-level frame — sole owner of 100vh×100vw; renders left/right panels with `ImperativePanelHandle` refs; switches left sidebar content by `activeLeftView` |
 | `workbench-store.ts` | Chrome state (sidebar visibility, active views, panel sizes) — Zustand with `persist` middleware → localStorage key `agentsflow-workbench-layout` |
 | `workspace-store.ts` | Multi-document state (flow list, open tabs, per-doc YAML/flow/validation/selection) |
@@ -64,7 +71,7 @@ Workbench (sole owner of 100vh × 100vw)
 
 Panel collapse/expand uses **`ImperativePanelHandle`** from `react-resizable-panels` (v2.1.9) with `isCollapsed()` guards to prevent infinite loops:
 
-```
+```text
 Store toggle → useEffect → panel.collapse()/expand() → onCollapse/onExpand callback → store sync
 ```
 
@@ -82,7 +89,7 @@ The `isCollapsed()` guard breaks the cycle: if the panel is already in the desir
 ### Panel constraints (from `workbench-tokens.ts`)
 
 | Panel | defaultSize | minSize | maxSize |
-|-------|-------------|---------|---------|
+| ----- | ----------- | ------- | ------- |
 | Left sidebar | 20% | 12% | 40% |
 | Right sidebar | 25% | 15% | 45% |
 | Bottom panel | 30% | 10% | 60% |
@@ -117,7 +124,7 @@ The `isCollapsed()` guard breaks the cycle: if the panel is already in the desir
 ## Verified behaviors (2026-05-17)
 
 | Feature | Result | Details |
-|---------|--------|---------|
+| ------- | ------ | ------- |
 | ☰ Left sidebar toggle | ✅ | Collapses to 0%, expands to 20% |
 | 💬 Right sidebar toggle | ✅ | Collapses to 0%, expands to 25% |
 | ▶ Run bottom panel toggle | ✅ | Collapses to 0%, expands to 30% |

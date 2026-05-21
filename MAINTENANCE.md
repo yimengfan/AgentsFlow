@@ -1,278 +1,138 @@
 # AgentsFlow 维护文档
 
-> 本文档面向项目维护者，记录架构决策、构建流程、开发工作流和常见问题。
+> 本文档面向维护者，聚焦环境、构建、运行、发布与排障。
+>
+> 架构决策、运行时契约与 AI 贡献约束不再在这里重复维护，请优先从 [docs/README.md](./docs/README.md) 进入对应文档。
 
 ---
 
 ## 目录
 
-1. [项目结构](#1-项目结构)
-2. [技术栈](#2-技术栈)
-3. [构建系统](#3-构建系统)
-4. [开发工作流](#4-开发工作流)
-5. [双平台架构](#5-双平台架构)
-6. [包依赖关系](#6-包依赖关系)
-7. [Electron 桌面端](#7-electron-桌面端)
-8. [Web 浏览器端](#8-web-浏览器端)
-9. [TypeScript 配置](#9-typescript-配置)
-10. [测试策略](#10-测试策略)
-11. [打包发布](#11-打包发布)
-12. [常见问题](#12-常见问题)
-13. [命名规范](#13-命名规范)
+1. [文档入口](#1-文档入口)
+2. [环境与依赖](#2-环境与依赖)
+3. [构建与验证](#3-构建与验证)
+4. [开发与运行](#4-开发与运行)
+5. [Electron 桌面端维护](#5-electron-桌面端维护)
+6. [Web 浏览器端维护](#6-web-浏览器端维护)
+7. [测试与发布](#7-测试与发布)
+8. [常见问题](#8-常见问题)
 
 ---
 
-## 1. 项目结构
+## 1. 文档入口
 
-```
-AgentsFlow/
-├── apps/
-│   ├── desktop/          # Electron 桌面应用壳
-│   │   ├── src/main/     # 主进程 (main.ts, app.ts, preload.ts)
-│   │   ├── src/renderer/ # 渲染进程 HTML 入口
-│   │   ├── scripts/      # dev.js 开发启动脚本
-│   │   └── vite.config.ts
-│   ├── web/              # 纯 Web 应用 (Vite only, port 3000)
-│   │   ├── src/          # index.tsx + index.html
-│   │   └── vite.config.ts
-│   └── studio/           # 共享渲染器 (被 desktop 和 web 复用)
-│       ├── src/          # index.tsx + index.html
-│       └── vite.config.ts
-├── packages/
-│   ├── shared-contracts/ # IPC 通道类型、DTO、错误码
-│   ├── agent-contracts/  # Agent 抽象接口
-│   ├── flow-schema/      # Flow YAML Schema + Zod 校验
-│   ├── flow-engine/      # Flow 调度器、节点执行器
-│   ├── agent-registry/   # 适配器发现与注册
-│   ├── local-store/      # SQLite 事件持久化
-│   ├── platform-adapter/ # IPC/HTTP 平台抽象 + React Context
-│   ├── ui-flow/          # React Flow 画布 + 面板
-│   └── testing-kit/      # Fake 适配器、测试工具
-├── tsconfig.base.json    # 共享 TS 编译配置
-├── pnpm-workspace.yaml   # monorepo 工作区定义
-├── start.sh              # 便捷启动脚本
-└── package.json          # 根 package.json
-```
+| 需求 | 权威文档 | 用途 |
+| ---- | -------- | ---- |
+| 项目总览、快速开始 | `README.md` | 外部入口与基础认知 |
+| 文档地图 | `docs/README.md` | 判断内容该去哪里找 |
+| 工作台布局决策 | `docs/adr/001-workbench-layout.md` | shell 结构、面板约束、布局不变量 |
+| Flow 运行时模型 | `docs/adr/002-flow-runtime-extension.md` | 运行时分层、扩展点、设计取舍 |
+| 节点与运行时契约 | `docs/specs/001-flow-node-contract.md` | 节点、端口、参数、调试数据的维护规则 |
+| 运行时绑定路径 | `docs/specs/002-runtime-binding.md` | `node.agentId` 到 transport 的执行路径 |
+| AI 贡献约束 | `.github/copilot-instructions.md` | AI 编码规则、验证要求、常见陷阱 |
+| 人类贡献流程 | `CONTRIBUTING.md` | 分支、验证、PR 流程 |
+
+本文件只保留以下内容：
+
+- 维护环境与依赖要求
+- 日常构建和运行命令
+- 桌面端与 Web 端的运维关注点
+- 发布检查项与排障手册
 
 ---
 
-## 2. 技术栈
+## 2. 环境与依赖
 
-| 领域 | 技术 | 版本 |
-|------|------|------|
-| 运行时 | Node.js | ≥ 20 (推荐 22) |
-| 包管理 | pnpm | 9.15.4 |
-| 语言 | TypeScript | 5.x |
-| 桌面框架 | Electron | 35.x |
-| 前端框架 | React | 19.x |
-| 状态管理 | Zustand | 5.x |
-| 画布 | @xyflow/react | 12.x |
-| 代码编辑器 | Monaco Editor | via @monaco-editor/react |
-| 构建工具 | Vite 6 + esbuild | — |
-| Schema 校验 | Zod | 3.24+ |
-| YAML 解析 | yaml | 2.7+ |
-| 测试 | Vitest | 3.x |
+### 必需版本
+
+| 项目 | 要求 | 说明 |
+| ---- | ---- | ---- |
+| Node.js | >= 20，推荐 22 | 通过 nvm 激活 |
+| pnpm | 9.15.4 | 使用 `corepack` 管理 |
+| Electron | 35.x | 仅桌面端开发与打包涉及 |
+
+### 环境激活
+
+所有 Node.js 相关命令前先激活 nvm：
+
+```bash
+export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+```
 
 ### 中国镜像配置
 
-项目默认使用中国镜像加速依赖下载：
-
 ```bash
-# npm 镜像
 export COREPACK_NPM_REGISTRY="https://registry.npmmirror.com"
-
-# Electron 二进制镜像
 export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
 ```
 
-`start.sh` 已内置这些配置。
+`start.sh` 和相关 `.command` 脚本已内置这些设置。
 
 ---
 
-## 3. 构建系统
+## 3. 构建与验证
 
-### 构建命令
+### 常用命令
 
 ```bash
-# 构建所有包
+pnpm install
 pnpm build
-
-# 仅构建核心契约包
-pnpm build:contracts
-
-# 清理所有构建产物
-pnpm clean
-
-# 类型检查
 pnpm typecheck
+pnpm test
+pnpm clean
 ```
 
-### 构建顺序
+### 维护规则
 
-包之间存在依赖关系，必须按顺序构建。`pnpm -r run build` 会根据 workspace 拓扑自动排序：
+- 所有构建和验证命令都从仓库根目录执行。
+- monorepo 的构建顺序由 pnpm workspace 拓扑自动处理，不要手工跳过上游包。
+- 共享包或公共契约变更后，至少执行一次完整的 `typecheck`、`build`、`test`。
+- UI 变更除命令验证外，还应启动 `pnpm dev:web` 检查页面渲染和控制台错误。
 
-```
-shared-contracts ──┐
-agent-contracts ───┤
-flow-schema ───────┼──▶ flow-engine
-                   ├──▶ agent-registry
-                   ├──▶ local-store
-                   ├──▶ testing-kit
-                   └──▶ platform-adapter
-                                     └──▶ ui-flow ──▶ apps/*
-```
+### 产物位置
 
-### 构建产物
-
-- 库包：`dist/` 目录，输出 `.js` + `.d.ts` + `.d.ts.map`
-- Electron 主进程：`apps/desktop/dist/main/`，由 esbuild 打包
-- 渲染进程：`apps/desktop/dist/renderer/`，由 Vite 构建
-- Web 应用：`apps/web/dist/`，由 Vite 构建
+- 库包构建输出在各自的 `dist/`。
+- Electron 主进程输出在 `apps/desktop/dist/main/`。
+- Electron 渲染进程输出在 `apps/desktop/dist/renderer/`。
+- Web 构建输出在 `apps/web/dist/`。
 
 ---
 
-## 4. 开发工作流
+## 4. 开发与运行
 
-### 日常开发（Web 模式）
+### Web 模式
 
 ```bash
 pnpm dev:web
-# → Vite dev server 启动在 http://localhost:3000
-# → 无需 Electron，浏览器直接预览
-# → 使用 HTTP 适配器连接后端 API
 ```
 
-**适用场景**：UI 开发、Flow 编辑器调试、日常迭代。
+- 默认端口 `3000`。
+- 使用 HTTP 适配器，适合 UI 和工作台日常迭代。
+- API 基地址通过 `VITE_API_BASE_URL` 配置。
 
-### 桌面端开发
+### 桌面端模式
 
 ```bash
 pnpm dev:desktop
 # 或 ./start.sh
 ```
 
-启动流程（`apps/desktop/scripts/dev.js`）：
+`apps/desktop/scripts/dev.js` 会执行：
 
-1. **构建 workspace 包** — `pnpm --filter '!@agentsflow/desktop' -r run build`
-2. **esbuild 打包主进程** — 将 `src/main/main.ts` 和 `preload.ts` 打包到 `dist/main/`
-3. **启动 Vite dev server** — 渲染进程热更新，端口 5173
-4. **启动 Electron** — 加载 Vite dev server 的 URL
+1. 构建 workspace 共享包。
+2. 使用 esbuild 打包 Electron 主进程与 preload。
+3. 启动渲染进程 Vite dev server，默认端口 `5173`。
+4. 启动 Electron 并加载开发地址。
 
-> ⚠️ pnpm filter 语法：`--filter` 必须在 `-r` 之前，且模式需要引号包裹避免 zsh glob 展开。
-
-### 环境激活
-
-所有 Node.js 命令前需激活 nvm：
-
-```bash
-export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-```
-
-`start.sh` 和 `.command` 启动脚本已内置此步骤。
+> `pnpm --filter` 必须在 `-r` 之前，带否定条件时要加引号，避免 zsh 提前展开。
 
 ---
 
-## 5. 双平台架构
-
-### PlatformApi 接口
-
-`@agentsflow/platform-adapter` 定义了统一的 `PlatformApi` 接口：
-
-```typescript
-interface PlatformApi {
-  readonly platform: "electron" | "web";
-  readonly flow: FlowApi;      // list, load, save, validate
-  readonly run: RunApi;        // start, pause, resume, abort, getStatus
-  readonly agent: AgentApi;    // listAdapters, getAdapter
-  readonly store: StoreApi;    // query, getRunEvents
-  on(channel: string, callback: (...args: any[]) => void): () => void;
-}
-```
-
-### 平台检测
-
-```typescript
-// detect.ts
-function detectPlatform(): "electron" | "web" {
-  if (typeof window !== "undefined" && typeof (window as any).agentsflow !== "undefined") {
-    return "electron";
-  }
-  return "web";
-}
-```
-
-### Electron 适配器
-
-通过 `window.agentsflow` IPC bridge（由 `preload.ts` 注入）调用主进程：
-
-```
-Renderer → window.agentsflow.flow.list() → ipcRenderer.invoke("flow:list") → Main Process
-```
-
-### HTTP 适配器
-
-通过 `fetch()` 调用 REST API：
-
-```
-Renderer → fetch("http://localhost:3000/api/flows") → Backend Server
-```
-
-后端 API 基地址通过 `VITE_API_BASE_URL` 环境变量配置，默认 `http://localhost:3000/api`。
-
-### React 集成
-
-```tsx
-// 自动检测平台
-<PlatformProvider>
-  <FlowEditor />
-</PlatformProvider>
-
-// 显式指定适配器（用于测试）
-<PlatformProvider api={createHttpAdapter("http://localhost:8080/api")}>
-  <FlowEditor />
-</PlatformProvider>
-```
-
----
-
-## 6. 包依赖关系
-
-```
-                    shared-contracts
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-    agent-contracts  flow-schema   platform-adapter
-          │              │              │
-    ┌─────┤        ┌─────┤        ┌─────┤
-    │     │        │     │        │     │
-  agent-registry  flow-engine    ui-flow
-    │     │        │     │              │
-    │   local-store │   testing-kit     │
-    │              │                    │
-    └──────────────┴────────────────────┘
-                   │
-              apps/desktop
-              apps/web
-              apps/studio
-```
-
-### 依赖规则
-
-- `shared-contracts` — **零依赖**，纯类型定义
-- `agent-contracts` — 仅依赖 `shared-contracts`
-- `flow-schema` — 仅依赖 `zod` + `yaml`
-- `platform-adapter` — 仅依赖 `shared-contracts`，`react` 为 peerDependency
-- `ui-flow` — 依赖 `flow-schema`、`shared-contracts`、`platform-adapter`、React 生态
-- `apps/*` — 可依赖所有 packages
-
----
-
-## 7. Electron 桌面端
+## 5. Electron 桌面端维护
 
 ### 文件结构
 
-```
+```text
 apps/desktop/
 ├── src/
 │   ├── main/
@@ -291,29 +151,22 @@ apps/desktop/
 └── tsconfig.renderer.json # 渲染进程 TS 配置 (bundler)
 ```
 
-### IPC 通道
+### 平台能力扩展链路
 
-| 通道 | 方向 | 说明 |
-|------|------|------|
-| `flow:list` | R→M | 列出所有 Flow 文件 |
-| `flow:load` | R→M | 读取 Flow YAML |
-| `flow:save` | R→M | 保存 Flow YAML |
-| `flow:validate` | R→M | 校验 Flow 定义 |
-| `run:start` | R→M | 启动 Flow 运行 |
-| `run:pause` | R→M | 暂停运行 |
-| `run:resume` | R→M | 恢复运行 |
-| `run:abort` | R→M | 终止运行 |
-| `run:getStatus` | R→M | 查询运行状态 |
-| `agent:listAdapters` | R→M | 列出可用适配器 |
-| `agent:getAdapter` | R→M | 获取适配器详情 |
-| `store:query` | R→M | 查询事件存储 |
-| `store:getRunEvents` | R→M | 获取运行事件列表 |
+新增或调整一个平台能力时，按这个顺序检查整条链：
+
+1. `packages/shared-contracts/src/types/ipc-channels.ts`
+2. `apps/desktop/src/main/app.ts`
+3. `apps/desktop/src/main/preload.ts`
+4. `packages/platform-adapter/src/platform-api.ts`
+5. `packages/platform-adapter/src/electron-adapter.ts`
+6. `packages/platform-adapter/src/http-adapter.ts`
 
 ### CSP 安全策略
 
 渲染进程 HTML 中的 Content-Security-Policy：
 
-```
+```text
 default-src 'self';
 script-src 'self' https://cdn.jsdelivr.net;     ← Monaco Editor CDN
 worker-src 'self' blob:;                         ← Monaco Web Worker
@@ -325,9 +178,9 @@ connect-src 'self' http://localhost:* ws://localhost:*;  ← Web 模式 API
 
 ---
 
-## 8. Web 浏览器端
+## 6. Web 浏览器端维护
 
-### 架构
+### 运行特征
 
 `apps/web` 是一个纯 Vite 应用，不依赖 Electron：
 
@@ -343,7 +196,7 @@ pnpm dev:web
 # → http://localhost:3000
 ```
 
-### 限制
+### 维护限制
 
 - 无文件系统直接访问（需后端 API 代理）
 - 无实时事件推送（`on()` 返回空订阅，未来可接 WebSocket/SSE）
@@ -351,45 +204,9 @@ pnpm dev:web
 
 ---
 
-## 9. TypeScript 配置
+## 7. 测试与发布
 
-### 基础配置 (`tsconfig.base.json`)
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "Node16",
-    "moduleResolution": "Node16",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
-  }
-}
-```
-
-### 关键差异
-
-| 包类型 | module | moduleResolution | jsx | lib |
-|--------|--------|------------------|-----|-----|
-| 库包 (`packages/*`) | Node16 | Node16 | — | ES2022 |
-| 渲染进程 (`apps/*/src`) | ESNext | bundler | react-jsx | ES2022 + DOM |
-| Electron 主进程 | Node16 | Node16 | — | ES2022 + Node |
-
-### 重要规则
-
-1. **ESM 导入必须带 `.js` 后缀**：`import { foo } from "./bar.js"`
-2. **`composite: true`** 要求所有输入文件必须被 `include` 覆盖
-3. **`exactOptionalPropertyTypes: true`** — 可选属性不能赋值 `undefined`
-4. Vite 项目使用 `bundler` moduleResolution 以支持 `import.meta.env`
-
----
-
-## 10. 测试策略
+### 测试命令
 
 ```bash
 # 运行所有测试
@@ -405,10 +222,6 @@ pnpm --filter @agentsflow/flow-engine run test
 - 测试框架：**Vitest**
 - 测试工具：`@agentsflow/testing-kit` 提供 `FakeAgentAdapter` 和 golden flow fixtures
 - 每个包的测试位于 `src/**/*.test.ts`
-
----
-
-## 11. 打包发布
 
 ### 桌面端打包
 
@@ -443,7 +256,7 @@ pnpm preview     # 预览构建结果
 
 ---
 
-## 12. 常见问题
+## 8. 常见问题
 
 ### Q: pnpm build 报错 "Cannot find module"
 
@@ -500,31 +313,4 @@ const x: Foo = { bar: undefined }  // ❌ 错误
 const y: Foo = {}                   // ✅ 正确
 ```
 
----
-
-## 13. 命名规范
-
-### 包命名
-
-- npm scope: `@agentsflow/`
-- kebab-case：`flow-engine`、`agent-registry`
-- 应用包：`@agentsflow/desktop`、`@agentsflow/web`、`@agentsflow/studio`
-
-### 文件命名
-
-- 源码：kebab-case（`flow-canvas.tsx`、`flow-store.ts`）
-- 测试：`*.test.ts`
-- 类型：`*.d.ts` 或内联在源文件中
-- 入口：`index.ts`
-
-### IPC 通道命名
-
-- 格式：`domain:action`
-- 示例：`flow:list`、`run:start`、`agent:getAdapter`
-
-### 变量命名
-
-- 接口：PascalCase（`FlowApi`、`RunStatus`）
-- 函数：camelCase（`createApp`、`detectPlatform`）
-- 常量：UPPER_SNAKE_CASE 或 camelCase（`API_BASE`）
-- DTO：PascalCase + readonly（`FlowSummary`、`EventSummary`）
+命名、ESM、TypeScript 严格规则统一以 `.github/copilot-instructions.md` 为准，不在本文件重复维护。

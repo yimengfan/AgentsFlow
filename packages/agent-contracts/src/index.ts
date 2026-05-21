@@ -10,6 +10,8 @@ export type {
   AgentTurnStatus,
   AgentTurnUsage,
   AgentTurnError,
+  ToolCallSummary,
+  TurnArtifact,
 } from "./types/agent-turn-result.js";
 export type {
   ToolSurface,

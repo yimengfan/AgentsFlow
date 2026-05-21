@@ -1,6 +1,8 @@
 import type { AgentAdapter } from "@agentsflow/agent-contracts";
 import type { AgentDef, FlowDefinition } from "@agentsflow/flow-schema";
+import { PiMonoAgentAdapter } from "@agentsflow/pi-mono-runtime";
 import { FakeAgentAdapter } from "@agentsflow/testing-kit";
+import { DeepSeekChatAdapter } from "./deepseek-chat-adapter.js";
 
 export interface RuntimeAdapterExtensionContext {
   readonly flow: FlowDefinition;
@@ -29,6 +31,21 @@ function ensureBuiltinExtensions(): void {
       new FakeAgentAdapter({
         evaluateScoreProgression: [0.42, 0.68, 0.91],
       }),
+  });
+  registerRuntimeAdapterExtension({
+    adapterKind: "deepseek",
+    displayName: "DeepSeek Chat",
+    createAdapter: () => new DeepSeekChatAdapter(),
+  });
+  registerRuntimeAdapterExtension({
+    adapterKind: "pi-mono",
+    displayName: "pi-mono",
+    createAdapter: ({ flow, agentDef }) => new PiMonoAgentAdapter({
+      flowName: flow.meta.name,
+      ...(agentDef.modelProfile?.model !== undefined ? { model: agentDef.modelProfile.model } : {}),
+      ...(agentDef.modelProfile?.temperature !== undefined ? { temperature: agentDef.modelProfile.temperature } : {}),
+      ...(agentDef.adapterConfig !== undefined ? { adapterConfig: agentDef.adapterConfig } : {}),
+    }),
   });
 }
 

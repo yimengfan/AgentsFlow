@@ -12,6 +12,36 @@ import type { PlatformApi } from "./platform-api.js";
  * or via VITE_API_BASE_URL env variable in Vite-bundled apps.
  */
 
+function getBrowserOrigin(): string | undefined {
+  try {
+    if (typeof globalThis === "object" && globalThis && "location" in globalThis) {
+      const location = (globalThis as { location?: { origin?: unknown } }).location;
+      if (typeof location?.origin === "string" && location.origin.length > 0) {
+        return location.origin;
+      }
+    }
+  } catch {
+    // Browser globals not available.
+  }
+
+  return undefined;
+}
+
+function normalizeApiBase(baseUrl: string): string {
+  if (/^https?:\/\//.test(baseUrl)) {
+    return baseUrl;
+  }
+
+  if (baseUrl.startsWith("/")) {
+    const origin = getBrowserOrigin();
+    if (origin) {
+      return `${origin}${baseUrl}`;
+    }
+  }
+
+  return baseUrl;
+}
+
 function getApiBase(): string {
   // In a Vite-bundled app, import.meta.env is available.
   // In a pure Node/TS context, it is not — so we guard with try/catch.
@@ -20,12 +50,21 @@ function getApiBase(): string {
     if (typeof import.meta !== "undefined") {
       const env = (import.meta as unknown as Record<string, unknown>).env;
       if (env && typeof env === "object" && "VITE_API_BASE_URL" in env) {
-        return (env as Record<string, string>)["VITE_API_BASE_URL"]!;
+        const envBase = (env as Record<string, string>)["VITE_API_BASE_URL"];
+        if (typeof envBase === "string" && envBase.length > 0) {
+          return normalizeApiBase(envBase);
+        }
       }
     }
   } catch {
     // import.meta not available (e.g. Jest/vitest)
   }
+
+  const browserOrigin = getBrowserOrigin();
+  if (browserOrigin) {
+    return `${browserOrigin}/api`;
+  }
+
   return "http://localhost:3000/api";
 }
 

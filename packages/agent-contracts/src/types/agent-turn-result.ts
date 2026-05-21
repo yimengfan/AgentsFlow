@@ -85,6 +85,9 @@ export interface AgentTurnResult {
   /** Structured output (if expectedOutput was specified and produced) */
   readonly structuredOutput?: Record<string, unknown>;
 
+  /** Optional reasoning or chain-of-thought style trace supplied by the adapter. */
+  readonly reasoningText?: string;
+
   /** Tool calls that occurred during this turn */
   readonly toolCalls?: readonly ToolCallSummary[];
 

@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { AgentEvent } from "@agentsflow/agent-contracts";
+import type {
+  AgentEvent,
+  AgentTurnUsage,
+  ToolCallSummary,
+  TurnArtifact,
+} from "@agentsflow/agent-contracts";
 import { FlowScheduler } from "@agentsflow/flow-engine";
 import type { RunContext } from "@agentsflow/flow-engine";
 import type { AgentDef, FlowDefinition, NodeDef } from "@agentsflow/flow-schema";
@@ -23,8 +28,33 @@ export interface NodeDebugState {
   readonly portOutputs: Record<string, unknown>;
   readonly finalText?: string;
   readonly structuredOutput?: Record<string, unknown>;
+  readonly reasoningText?: string;
+  readonly toolCalls?: readonly ToolCallSummary[];
+  readonly artifacts?: readonly TurnArtifact[];
+  readonly usage?: AgentTurnUsage;
+  readonly warnings?: readonly string[];
   readonly promptSources: readonly PromptSourceRef[];
   readonly lastEvent?: string;
+}
+
+export interface RunTimelineEntry {
+  readonly entryId: string;
+  readonly role: "user" | "assistant" | "system";
+  readonly title: string;
+  readonly content: string;
+  readonly timestamp: number;
+  readonly nodeId?: string;
+  readonly nodeKind?: string;
+  readonly agentId?: string;
+  readonly status?: "completed" | "failed" | "running";
+  readonly inputs?: Record<string, unknown>;
+  readonly promptSources?: readonly PromptSourceRef[];
+  readonly structuredOutput?: Record<string, unknown>;
+  readonly reasoningText?: string;
+  readonly toolCalls?: readonly ToolCallSummary[];
+  readonly artifacts?: readonly TurnArtifact[];
+  readonly usage?: AgentTurnUsage;
+  readonly warnings?: readonly string[];
 }
 
 export interface LocalRunRecord {
@@ -38,6 +68,7 @@ export interface LocalRunRecord {
   readonly input: Record<string, unknown>;
   readonly events: readonly AgentEvent[];
   readonly nodeStates: ReadonlyMap<string, NodeDebugState>;
+  readonly timeline: readonly RunTimelineEntry[];
   readonly finalResult?: unknown;
   readonly error?: string;
 }
@@ -180,12 +211,138 @@ function buildNodeStates(
       portOutputs: ctx ? toRecord(ctx.getNodePortValues(node.nodeId)) : {},
       ...(output?.finalText !== undefined ? { finalText: output.finalText } : {}),
       ...(output?.structuredOutput !== undefined ? { structuredOutput: output.structuredOutput } : {}),
+      ...(output?.reasoningText !== undefined ? { reasoningText: output.reasoningText } : {}),
+      ...(output?.toolCalls !== undefined ? { toolCalls: output.toolCalls } : {}),
+      ...(output?.artifacts !== undefined ? { artifacts: output.artifacts } : {}),
+      ...(output?.usage !== undefined ? { usage: output.usage } : {}),
+      ...(output?.warnings !== undefined ? { warnings: output.warnings } : {}),
       promptSources: buildPromptSources(agentDef, node, runInput),
       ...(lastEvent !== undefined ? { lastEvent } : {}),
     });
   }
 
   return nextStates;
+}
+
+function formatTimelineContent(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  if (value !== undefined) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+  return fallback;
+}
+
+function buildTimelineEntry(
+  flow: FlowDefinition,
+  ctx: RunContext | undefined,
+  runInput: Record<string, unknown>,
+  event: AgentEvent,
+): RunTimelineEntry | undefined {
+  if (event.eventType === "run_started") {
+    const content = formatTimelineContent(
+      runInput.userPrompt ?? (Object.keys(runInput).length > 0 ? runInput : undefined),
+      "Started flow run.",
+    );
+    return {
+      entryId: event.eventId,
+      role: "user",
+      title: "User",
+      content,
+      timestamp: event.timestamp,
+      status: "running",
+    };
+  }
+
+  if ((event.eventType === "turn_completed" || event.eventType === "turn_failed") && event.nodeId) {
+    const node = flow.graph.nodes.find((candidate) => candidate.nodeId === event.nodeId);
+    if (!node) {
+      return undefined;
+    }
+
+    const effectiveKind = node.nodeKind ?? node.nodeType ?? "agent";
+    const isAgentNode = effectiveKind === "agent" || effectiveKind.startsWith("agent.");
+    if (!isAgentNode) {
+      return undefined;
+    }
+
+    const output = ctx?.getNodeOutput(node.nodeId);
+    const agentDef = node.agentId
+      ? flow.agents.agentDefs.find((agent) => agent.agentId === node.agentId)
+      : undefined;
+    const inputs = buildNodeInputs(flow, ctx, node, runInput);
+    const promptSources = buildPromptSources(agentDef, node, runInput);
+    const content = formatTimelineContent(
+      output?.finalText ?? output?.structuredOutput ?? event.payload,
+      `${node.label ?? node.nodeId} completed.`,
+    );
+    const status = event.eventType === "turn_failed" || output?.status === "failed" ? "failed" : "completed";
+
+    return {
+      entryId: event.eventId,
+      role: "assistant",
+      title: node.label ?? node.nodeId,
+      content,
+      timestamp: event.timestamp,
+      ...(node.nodeId !== undefined ? { nodeId: node.nodeId } : {}),
+      ...(node.nodeKind !== undefined ? { nodeKind: node.nodeKind } : {}),
+      ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+      status,
+      ...(Object.keys(inputs).length > 0 ? { inputs } : {}),
+      ...(promptSources.length > 0 ? { promptSources } : {}),
+      ...(output?.structuredOutput !== undefined ? { structuredOutput: output.structuredOutput } : {}),
+      ...(output?.reasoningText !== undefined ? { reasoningText: output.reasoningText } : {}),
+      ...(output?.toolCalls !== undefined ? { toolCalls: output.toolCalls } : {}),
+      ...(output?.artifacts !== undefined ? { artifacts: output.artifacts } : {}),
+      ...(output?.usage !== undefined ? { usage: output.usage } : {}),
+      ...(output?.warnings !== undefined ? { warnings: output.warnings } : {}),
+    };
+  }
+
+  if (event.eventType === "run_failed") {
+    return {
+      entryId: event.eventId,
+      role: "system",
+      title: "Run Failed",
+      content: formatTimelineContent(event.payload.error, "Run failed."),
+      timestamp: event.timestamp,
+      status: "failed",
+    };
+  }
+
+  return undefined;
+}
+
+function hydrateTimelineEntries(
+  timeline: readonly RunTimelineEntry[],
+  nodeStates: ReadonlyMap<string, NodeDebugState>,
+): readonly RunTimelineEntry[] {
+  return timeline.map((entry) => {
+    if (!entry.nodeId) {
+      return entry;
+    }
+
+    const nodeState = nodeStates.get(entry.nodeId);
+    if (!nodeState) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      content: nodeState.finalText ?? entry.content,
+      ...(nodeState.structuredOutput !== undefined ? { structuredOutput: nodeState.structuredOutput } : {}),
+      ...(nodeState.reasoningText !== undefined ? { reasoningText: nodeState.reasoningText } : {}),
+      ...(nodeState.toolCalls !== undefined ? { toolCalls: nodeState.toolCalls } : {}),
+      ...(nodeState.artifacts !== undefined ? { artifacts: nodeState.artifacts } : {}),
+      ...(nodeState.usage !== undefined ? { usage: nodeState.usage } : {}),
+      ...(nodeState.warnings !== undefined ? { warnings: nodeState.warnings } : {}),
+    };
+  });
 }
 
 function buildRunRecord(
@@ -198,7 +355,13 @@ function buildRunRecord(
 ): LocalRunRecord {
   const previousEvents = previous?.events ?? [];
   const previousStates = previous?.nodeStates ?? new Map<string, NodeDebugState>();
+  const previousTimeline = previous?.timeline ?? [];
   const nextNodeStates = buildNodeStates(flow, ctx, runInput, previousStates, event);
+  const timelineEntry = buildTimelineEntry(flow, ctx, runInput, event);
+  const nextTimeline = hydrateTimelineEntries(
+    timelineEntry ? [...previousTimeline, timelineEntry] : previousTimeline,
+    nextNodeStates,
+  );
 
   const stateFromContext = ctx?.state ?? previous?.state ?? "running";
   const finalNode = ctx?.currentNodeId ? nextNodeStates.get(ctx.currentNodeId) : undefined;
@@ -214,6 +377,7 @@ function buildRunRecord(
     input: runInput,
     events: [...previousEvents, event],
     nodeStates: nextNodeStates,
+    timeline: nextTimeline,
     ...(event.eventType === "run_failed" ? { error: String(event.payload.error ?? "Run failed") } : {}),
     ...(finalNode?.finalText !== undefined ? { finalResult: finalNode.finalText } : {}),
   };

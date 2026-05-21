@@ -55,6 +55,7 @@ export {
   type RuntimeAdapterExtension,
   type RuntimeAdapterExtensionContext,
 } from "./lib/runtime-adapter-registry.js";
+export { DeepSeekChatAdapter } from "./lib/deepseek-chat-adapter.js";
 
 // Workbench styling tokens & theme system
 export type { Palette, SemanticTokens, ThemePreset } from "./components/workbench-tokens.js";

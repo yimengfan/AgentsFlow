@@ -10,6 +10,29 @@ import type {
 import type { FlowDefinition, NodeDef, AgentDef } from "@agentsflow/flow-schema";
 import type { EventBus } from "../events/event-bus.js";
 
+function serializePromptValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? value : undefined;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function joinPromptSections(sections: Array<string | undefined>): string | undefined {
+  const joined = sections
+    .map((section) => section?.trim())
+    .filter((section): section is string => Boolean(section && section.length > 0))
+    .join("\n\n");
+
+  return joined.length > 0 ? joined : undefined;
+}
+
 /**
  * NodeExecutor — executes a single node within a flow run.
  *
@@ -166,33 +189,48 @@ export class NodeExecutor {
   ): string | undefined {
     const config = node.config as Record<string, unknown> | undefined;
     const input = context.input;
+    const systemPrompt = config?.systemPrompt as string | undefined
+      ?? agentDef?.modelProfile?.systemPrompt;
+    const upstreamPrompt = serializePromptValue(input.prompt);
+    const inputData = serializePromptValue(input.data);
+    const previousResult = serializePromptValue(input.previousResult);
 
     // For evaluate turns, use the evaluatePrompt from the control node config
     // or from the node's own config
     if (turnMode === "evaluate") {
       const evaluatePrompt = config?.evaluatePrompt as string | undefined;
-      if (evaluatePrompt) return evaluatePrompt;
-      // Default evaluate prompt
-      return "Evaluate the execution result. Score from 0 to 1. Return JSON: {\"score\": <number>, \"canComplete\": <boolean>, \"reason\": \"<string>\"}";
+      return joinPromptSections([
+        systemPrompt,
+        evaluatePrompt
+          ?? "Evaluate the execution result. Score from 0 to 1. Return JSON: {\"score\": <number>, \"canComplete\": <boolean>, \"reason\": \"<string>\"}",
+        inputData ? `Execution Result:\n${inputData}` : undefined,
+        previousResult ? `Previous Result:\n${previousResult}` : undefined,
+      ]);
     }
 
     // For plan turns, use the user prompt or a default planning prompt
     if (turnMode === "plan") {
-      const userPrompt = (input.userPrompt as string) ?? config?.userPrompt as string | undefined;
-      if (userPrompt) return userPrompt;
-      return "Create a plan to accomplish the given task. Return structured output.";
+      const userPrompt = serializePromptValue(input.userPrompt)
+        ?? upstreamPrompt
+        ?? config?.userPrompt as string | undefined;
+      return joinPromptSections([
+        systemPrompt,
+        userPrompt ?? "Create a plan to accomplish the given task. Return structured output.",
+        inputData ? `Context Data:\n${inputData}` : undefined,
+      ]);
     }
 
     // For normal turns, use system + user prompt
-    const systemPrompt = config?.systemPrompt as string | undefined
-      ?? agentDef?.modelProfile?.systemPrompt;
-    const userPrompt = (input.userPrompt as string) ?? config?.userPrompt as string | undefined;
+    const userPrompt = serializePromptValue(input.userPrompt)
+      ?? upstreamPrompt
+      ?? config?.userPrompt as string | undefined;
 
-    if (systemPrompt && userPrompt) return `${systemPrompt}\n\n${userPrompt}`;
-    if (userPrompt) return userPrompt;
-    if (systemPrompt) return systemPrompt;
-
-    return undefined;
+    return joinPromptSections([
+      systemPrompt,
+      userPrompt,
+      inputData ? `Additional Context:\n${inputData}` : undefined,
+      !upstreamPrompt && !inputData && previousResult ? `Previous Result:\n${previousResult}` : undefined,
+    ]);
   }
 
   private async resolveSessionId(

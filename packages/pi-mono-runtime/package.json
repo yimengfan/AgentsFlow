@@ -1,0 +1,23 @@
+{
+  "name": "@agentsflow/pi-mono-runtime",
+  "version": "0.1.0",
+  "description": "pi-mono runtime adapter for AgentsFlow",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentsflow/agent-contracts": "workspace:*"
+  },
+  "license": "MIT"
+}
