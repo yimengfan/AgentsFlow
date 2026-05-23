@@ -10,8 +10,8 @@ import type { NodeSpec } from "@agentsflow/node-spec-registry";
 /**
  * FlowEditorSurface — center-only editor content: canvas with conditional inspector.
  *
- * Layout: Canvas fills the full area when no node is selected.
- * When a node is selected, a right-side inspector panel slides in via
+ * Layout: Canvas fills the full area when no node or edge is selected.
+ * When a node or edge is selected, a right-side inspector panel slides in via
  * react-resizable-panels. No bottom YAML editor panel.
  *
  * Props:
@@ -31,6 +31,7 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
   const moveNode = useWorkspaceStore((s) => s.moveNode);
   const removeNode = useWorkspaceStore((s) => s.removeNode);
   const removeEdge = useWorkspaceStore((s) => s.removeEdge);
+  const selectEdge = useWorkspaceStore((s) => s.selectEdge);
   const handleRevealYaml = useCallback(
     (_target: YamlRevealTarget) => {
       // Reveal YAML is currently disabled (no YAML editor panel).
@@ -55,11 +56,11 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
     );
   }
 
-  const hasSelection = doc.selectedNodeId !== null;
+  const hasSelection = doc.selectedNodeId !== null || doc.selectedEdgeId !== null;
 
   return (
     <PanelGroup direction="horizontal" style={{ height: "100%" }}>
-      {/* Canvas — fills entire width when no node is selected */}
+      {/* Canvas — fills entire width when no node or edge is selected */}
       <Panel id="canvas" order={1} defaultSize={hasSelection ? 72 : 100} minSize={55}>
         <div style={{ height: "100%", width: "100%" }}>
           <ReactFlowProvider>
@@ -82,12 +83,15 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
               onRemoveEdge={(source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
                 removeEdge(flowPath, source, target, sourceHandle, targetHandle);
               }}
+              onSelectEdge={(edgeId: string | null) => {
+                selectEdge(edgeId);
+              }}
             />
           </ReactFlowProvider>
         </div>
       </Panel>
 
-      {/* Inspector panel — only rendered when a node is selected */}
+      {/* Inspector panel — rendered when a node or edge is selected */}
       {hasSelection ? (
         <>
           <PanelResizeHandle
@@ -101,6 +105,7 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
               flowPath={flowPath}
               flow={doc.flow}
               selectedNodeId={doc.selectedNodeId}
+              selectedEdgeId={doc.selectedEdgeId}
               onRevealYaml={handleRevealYaml}
             />
           </Panel>

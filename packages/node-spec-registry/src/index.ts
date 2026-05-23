@@ -15,3 +15,4 @@ export { AgentMainSpec } from "./nodes/agent-main.js";
 export { AgentSubSpec } from "./nodes/agent-sub.js";
 export { ControlPlanLoopSpec } from "./nodes/control-plan-loop.js";
 export { ControlFinishSpec } from "./nodes/control-finish.js";
+export { InputPromptSpec } from "./nodes/input-prompt.js";

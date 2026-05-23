@@ -5,8 +5,10 @@
  * UI components call these methods without knowing the underlying transport.
  */
 
+import type { PromptAssetManifest } from "@agentsflow/flow-schema";
+
 export interface FlowApi {
-  list(): Promise<readonly FlowSummary[]>;
+  list(workspacePath: string): Promise<readonly FlowSummary[]>;
   load(flowPath: string): Promise<string>;
   save(flowPath: string, content: string): Promise<void>;
   validate(content: string): Promise<ValidationResult>;
@@ -54,6 +56,17 @@ export interface PlatformApi {
   readonly workspace: WorkspaceApi;
   /** Subscribe to platform events. Returns an unsubscribe function. */
   on(channel: string, callback: (...args: any[]) => void): () => void;
+  /**
+   * Scan the .agents-flow/ directory and resolve the prompt asset manifest.
+   *
+   * In Electron mode, this uses Node.js fs to read the workspace's
+   * .agents-flow/ directory directly. In Web mode, this uses the
+   * WorkspaceApi to read files via the backend.
+   *
+   * @param workspaceDir - The root workspace directory path
+   * @returns The resolved PromptAssetManifest (may contain errors)
+   */
+  scanPromptAssets(workspaceDir: string): Promise<PromptAssetManifest>;
 }
 
 // --- DTO types (mirrors shared-contracts IPC types) ---
@@ -102,6 +115,7 @@ export interface DirEntry {
   readonly path: string;
   readonly isDirectory: boolean;
   readonly isFlowFile: boolean;
+  readonly isHidden?: boolean;
 }
 
 /** File/directory metadata from stat(). */

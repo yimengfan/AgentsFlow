@@ -176,6 +176,8 @@ export class PiMonoAgentAdapter implements AgentAdapter {
         ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
         ...(config.adapterConfig !== undefined ? { adapterConfig: config.adapterConfig } : {}),
         ...(invocation.metadata !== undefined ? { metadata: invocation.metadata } : {}),
+        ...(invocation.stream !== undefined ? { stream: invocation.stream } : {}),
+        ...(invocation.onStreamDelta !== undefined ? { onStreamDelta: invocation.onStreamDelta } : {}),
       });
 
       if (response.status && response.status !== "completed") {

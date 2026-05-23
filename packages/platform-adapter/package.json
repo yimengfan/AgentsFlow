@@ -17,6 +17,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentsflow/flow-schema": "workspace:*",
+    "@agentsflow/prompt-asset-resolver": "workspace:*",
     "@agentsflow/shared-contracts": "workspace:*"
   },
   "devDependencies": {

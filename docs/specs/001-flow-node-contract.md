@@ -282,6 +282,33 @@ Rules:
 - Prompt sources should distinguish `agent`, `node`, `run-input`, and `external-file`.
 - UI surfaces must not invent independent debug models for the same run.
 
+## External Agent Reference
+
+When a node uses `agentRef` instead of (or alongside) `agentId`, the binding path extends through the `PromptAssetManifest` rather than inline `agents.agentDefs`.
+
+### agentRef on NodeDef
+
+- `agentRef: string | undefined` — references an `agentId` from a `.agents-flow/agents/*.agent.md` file.
+- When `agentRef` is present, it takes precedence over `agentId`.
+- When `agentRef` is absent, the node falls through to the existing `agentId → agents.agentDefs` path.
+
+### outputKind on AgentDef
+
+- `outputKind: "text" | "plan" | "score" | undefined` — declares the built-in output kind.
+- Determines which output port the runtime publishes to:
+  - `text` → "result" and "out" ports (default)
+  - `plan` → "plan" port (in addition to "result" and "out")
+  - `score` → "score" port (in addition to "result" and "out")
+- When `outputKind` is absent, the runtime uses existing `turnMode`-based port mapping.
+
+### presetAgentRef on NodeSpec
+
+- `presetAgentRef: string | undefined` — UI hint for pre-populating the agent binding dropdown.
+- Does not affect runtime execution.
+- Built-in values: `agent.main` → `"main-agent"`, `agent.sub` → `"sub-agent"`.
+
+Full details: `docs/specs/003-agents-flow-repo-spec.md`.
+
 ## Authoring Checklist
 When introducing a new node kind or runtime integration:
 

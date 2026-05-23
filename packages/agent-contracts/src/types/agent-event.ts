@@ -28,6 +28,25 @@ export type AgentEventType =
   | "run_resumed";
 
 /**
+ * Stream delta payload — carried by `agent_stream_delta` events.
+ * Each delta represents a incremental chunk of output from a running agent.
+ */
+export interface StreamDeltaPayload {
+  /** The text chunk added in this delta */
+  readonly deltaText?: string;
+  /** The reasoning/thinking text chunk added in this delta */
+  readonly deltaReasoningText?: string;
+  /** Running total of accumulated finalText so far (optional, for consumer convenience) */
+  readonly accumulatedText?: string;
+  /** Running total of accumulated reasoningText so far (optional) */
+  readonly accumulatedReasoningText?: string;
+  /** Which part of the output this delta belongs to */
+  readonly part?: "final" | "reasoning" | "tool-call" | "structured";
+  /** Token count for this delta (if available) */
+  readonly deltaTokens?: number;
+}
+
+/**
  * AgentEvent — the universal event envelope for all platform events.
  *
  * Every event carries identity (runId, nodeId, agentId, invocationId)

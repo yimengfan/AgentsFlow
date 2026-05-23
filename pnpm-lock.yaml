@@ -122,6 +122,9 @@ importers:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
     devDependencies:
+      '@agentsflow/flow-schema':
+        specifier: workspace:*
+        version: link:../../packages/flow-schema
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
@@ -162,6 +165,9 @@ importers:
       '@agentsflow/flow-schema':
         specifier: workspace:*
         version: link:../flow-schema
+      '@agentsflow/prompt-asset-resolver':
+        specifier: workspace:*
+        version: link:../prompt-asset-resolver
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
@@ -210,6 +216,12 @@ importers:
 
   packages/platform-adapter:
     dependencies:
+      '@agentsflow/flow-schema':
+        specifier: workspace:*
+        version: link:../flow-schema
+      '@agentsflow/prompt-asset-resolver':
+        specifier: workspace:*
+        version: link:../prompt-asset-resolver
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts
@@ -220,6 +232,19 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.6
+
+  packages/prompt-asset-resolver:
+    dependencies:
+      '@agentsflow/flow-schema':
+        specifier: workspace:*
+        version: link:../flow-schema
+      yaml:
+        specifier: ^2.7.0
+        version: 2.9.0
+    devDependencies:
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)
 
   packages/shared-contracts:
     devDependencies:
@@ -263,6 +288,9 @@ importers:
       '@agentsflow/platform-adapter':
         specifier: workspace:*
         version: link:../platform-adapter
+      '@agentsflow/prompt-asset-resolver':
+        specifier: workspace:*
+        version: link:../prompt-asset-resolver
       '@agentsflow/shared-contracts':
         specifier: workspace:*
         version: link:../shared-contracts

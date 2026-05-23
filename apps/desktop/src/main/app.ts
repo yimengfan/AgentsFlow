@@ -109,9 +109,56 @@ function registerIpcHandlers(
   store?: LocalStore,
 ): void {
   // Flow operations
-  ipcMain.handle("flow:list", async () => {
-    // TODO: scan flow directory for .yaml files
-    return [];
+  ipcMain.handle("flow:list", async (_e: IpcMainInvokeEvent, workspacePath: string) => {
+    const fs = await import("node:fs/promises");
+    const nodePath = await import("node:path");
+    const { parseFlowYaml, safeValidateFlowDefinition } = await import("@agentsflow/flow-schema");
+
+    const results: Array<{ flowPath: string; name: string; schemaVersion: string; nodeCount: number; agentCount: number }> = [];
+
+    async function scanDir(dirPath: string, depth: number): Promise<void> {
+      // Limit recursion depth to avoid scanning node_modules etc.
+      if (depth > 3) return;
+
+      let entries;
+      try {
+        entries = await fs.readdir(dirPath, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        // Skip node_modules and .git entirely
+        if (entry.name === "node_modules" || entry.name === ".git") continue;
+
+        const fullPath = nodePath.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          await scanDir(fullPath, depth + 1);
+        } else if (/\.(yml|yaml)$/.test(entry.name)) {
+          try {
+            const yaml = await fs.readFile(fullPath, "utf-8");
+            const flow = parseFlowYaml(yaml);
+            const validation = safeValidateFlowDefinition(flow);
+            if (validation.success) {
+              const def = validation.data;
+              results.push({
+                flowPath: fullPath,
+                name: def.meta?.name ?? nodePath.basename(fullPath, nodePath.extname(fullPath)),
+                schemaVersion: def.meta?.schemaVersion ?? "unknown",
+                nodeCount: def.graph?.nodes?.length ?? 0,
+                agentCount: def.agents?.agentDefs?.length ?? 0,
+              });
+            }
+          } catch {
+            // Not a valid flow YAML — skip silently
+          }
+        }
+      }
+    }
+
+    await scanDir(workspacePath, 0);
+    return results;
   });
 
   ipcMain.handle("flow:load", async (_e: IpcMainInvokeEvent, filePath: string) => {
@@ -212,7 +259,11 @@ function registerIpcHandlers(
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
       return entries
-        .filter((entry) => !entry.name.startsWith(".")) // hide dotfiles
+        .filter((entry) => {
+          // Only hide .git and node_modules; show all other dot entries
+          if (entry.name === ".git" || entry.name === "node_modules") return false;
+          return true;
+        })
         .map((entry) => {
           const fullPath = path.join(dirPath, entry.name);
           const isFlowFile = !entry.isDirectory() && /\.(yml|yaml)$/.test(entry.name);
@@ -221,6 +272,7 @@ function registerIpcHandlers(
             path: fullPath,
             isDirectory: entry.isDirectory(),
             isFlowFile,
+            isHidden: entry.name.startsWith("."),
           };
         })
         .sort((a, b) => {

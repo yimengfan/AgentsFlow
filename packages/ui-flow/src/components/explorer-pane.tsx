@@ -7,6 +7,7 @@ import type { TreeNode } from "../lib/workspace-tree.js";
 import { FileTreeItem } from "./file-tree-item.js";
 import { FileTreeContextMenu } from "./file-tree-context-menu.js";
 import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
+import type { FlowSummary } from "@agentsflow/shared-contracts";
 
 /**
  * ExplorerPane — file/directory browser in the left sidebar.
@@ -43,6 +44,8 @@ export function ExplorerPane() {
   const setLoading = useWorkspaceTreeStore((s) => s.setLoading);
   const setError = useWorkspaceTreeStore((s) => s.setError);
   const addRecentWorkspace = useWorkspaceTreeStore((s) => s.addRecentWorkspace);
+  const setPromptAssetManifest = useWorkspaceStore((s) => s.setPromptAssetManifest);
+  const setFlowList = useWorkspaceStore((s) => s.setFlowList);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(INITIAL_CONTEXT_MENU);
 
   // Load root directory contents when workspace is opened
@@ -73,6 +76,58 @@ export function ExplorerPane() {
 
     return () => { cancelled = true; };
   }, [rootPath, platform, setTree, setLoading, setError]);
+
+  // Scan workspace for available flows when workspace root changes
+  useEffect(() => {
+    if (!rootPath) {
+      setFlowList([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const flows = await platform.flow.list(rootPath) as readonly FlowSummary[];
+        if (!cancelled) {
+          setFlowList(flows);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("Failed to list flows:", err);
+          setFlowList([]);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [rootPath, platform, setFlowList]);
+
+  // Scan .agents-flow/ prompt assets when workspace root changes
+  useEffect(() => {
+    if (!rootPath) {
+      setPromptAssetManifest(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const manifest = await platform.scanPromptAssets(rootPath);
+        if (!cancelled) {
+          setPromptAssetManifest(manifest);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("Failed to scan prompt assets:", err);
+          setPromptAssetManifest(null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [rootPath, platform, setPromptAssetManifest]);
 
   const handleOpenWorkspace = useCallback(async () => {
     try {

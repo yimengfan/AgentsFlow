@@ -10,7 +10,8 @@ import { create } from "zustand";
  * the store itself is pure state and does not import platform-adapter.
  */
 
-import type { FlowDefinition, NodeDef, EdgeDef } from "@agentsflow/flow-schema";
+import type { FlowDefinition, NodeDef, EdgeDef, PromptAssetManifest } from "@agentsflow/flow-schema";
+import type { FlowSummary } from "@agentsflow/shared-contracts";
 import type { NodeSpec } from "@agentsflow/node-spec-registry";
 import type { PlatformApi } from "@agentsflow/platform-adapter";
 import {
@@ -45,7 +46,7 @@ export interface DocumentState {
 
 export interface WorkspaceState {
   /** Available flow summaries (from platform flow.list()) */
-  flowList: readonly { flowPath: string; name: string; nodeCount: number }[];
+  flowList: readonly FlowSummary[];
   /** Open documents keyed by flowPath */
   documents: ReadonlyMap<string, DocumentState>;
   /** Ordered list of open tab flowPaths */
@@ -54,11 +55,13 @@ export interface WorkspaceState {
   activeFlowPath: string | null;
   /** Loading state */
   isLoading: boolean;
+  /** Resolved prompt asset manifest from .agents-flow/ directory (null if not loaded) */
+  promptAssetManifest: PromptAssetManifest | null;
 }
 
 export interface WorkspaceActions {
   /** Set flow list from platform data */
-  setFlowList: (list: readonly { flowPath: string; name: string; nodeCount: number }[]) => void;
+  setFlowList: (list: readonly FlowSummary[]) => void;
   /** Open a flow tab (creates DocumentState if needed) */
   openFlow: (flowPath: string, yamlSource: string) => void;
   /** Open a non-flow file tab (text or binary) */
@@ -87,6 +90,8 @@ export interface WorkspaceActions {
   moveNode: (flowPath: string, nodeId: string, position: { x: number; y: number }) => void;
   /** Update a single config value on a node */
   updateNodeConfig: (flowPath: string, nodeId: string, paramId: string, value: unknown) => void;
+  /** Update the agentRef on a node (binding to a .agents-flow agent definition) */
+  updateNodeAgentRef: (flowPath: string, nodeId: string, agentRef: string | undefined) => void;
   /** Remove a node from a flow by nodeId */
   removeNode: (flowPath: string, nodeId: string) => void;
   /** Remove an edge from a flow by source+target identifiers */
@@ -95,6 +100,8 @@ export interface WorkspaceActions {
   createFlow: () => string;
   /** Create a new flow file in the given directory, open it, and return its path */
   createFlowInWorkspace: (dirPath: string, fileName: string, platform: PlatformApi) => Promise<string>;
+  /** Set the prompt asset manifest (called after scanning .agents-flow/) */
+  setPromptAssetManifest: (manifest: PromptAssetManifest | null) => void;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;
@@ -135,6 +142,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   openTabs: [],
   activeFlowPath: null,
   isLoading: false,
+  promptAssetManifest: null,
 
   setFlowList: (list) => set({ flowList: list }),
 
@@ -442,6 +450,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
   },
 
+  updateNodeAgentRef: (flowPath, nodeId, agentRef) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc || !doc.flow) return;
+
+    const updatedFlow: FlowDefinition = {
+      ...doc.flow,
+      graph: {
+        ...doc.flow.graph,
+        nodes: doc.flow.graph.nodes.map((node) => {
+          if (node.nodeId !== nodeId) return node;
+          const { agentRef: _unused, ...rest } = node;
+          if (agentRef === undefined) return rest;
+          return { ...rest, agentRef };
+        }),
+      },
+    };
+
+    commitDocument(set, documents, flowPath, buildUpdatedDocument(doc, updatedFlow));
+  },
+
   removeNode: (flowPath, nodeId) => {
     const { documents } = get();
     const doc = documents.get(flowPath);
@@ -530,6 +559,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     return filePath;
   },
+
+  setPromptAssetManifest: (manifest) => set({ promptAssetManifest: manifest }),
 }));
 
 // ---------------------------------------------------------------------------

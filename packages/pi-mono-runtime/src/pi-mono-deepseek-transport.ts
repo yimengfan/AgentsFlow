@@ -1,4 +1,4 @@
-import type { AgentCapability } from "@agentsflow/agent-contracts";
+import type { AgentCapability, StreamDeltaPayload } from "@agentsflow/agent-contracts";
 import type {
   PiMonoCreateSessionRequest,
   PiMonoCreateSessionResponse,
@@ -43,6 +43,108 @@ interface DeepSeekResponse {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
+}
+
+// ─── SSE stream chunk (OpenAI-compatible) ──────────────────
+
+interface StreamChunk {
+  readonly choices?: ReadonlyArray<{
+    readonly delta?: {
+      readonly content?: string;
+      readonly reasoning_content?: string;
+    };
+    readonly finish_reason?: string;
+  }>;
+  readonly usage?: {
+    readonly prompt_tokens?: number;
+    readonly completion_tokens?: number;
+    readonly total_tokens?: number;
+  };
+}
+
+/**
+ * Parse a single SSE "data:" line into a StreamChunk.
+ * Returns undefined for non-data lines, empty lines, or "[DONE]".
+ */
+function parseSseLine(line: string): StreamChunk | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) return undefined;
+  const payload = trimmed.slice(5).trim();
+  if (payload === "[DONE]") return undefined;
+  try {
+    return JSON.parse(payload) as StreamChunk;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Consume a streaming ReadableStream of SSE events, calling onStreamDelta
+ * for each content/reasoning delta. Returns the final accumulated response.
+ */
+async function consumeSseStream(
+  body: ReadableStream<Uint8Array>,
+  onStreamDelta?: (delta: StreamDeltaPayload) => void,
+): Promise<DeepSeekResponse> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let accumulatedText = "";
+  let accumulatedReasoning = "";
+  let lastUsage: DeepSeekResponse["usage"] | undefined;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep the last potentially incomplete line in the buffer
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const chunk = parseSseLine(line);
+        if (!chunk) continue;
+
+        const delta = chunk.choices?.[0]?.delta;
+        if (delta?.content) {
+          accumulatedText += delta.content;
+          onStreamDelta?.({
+            deltaText: delta.content,
+            accumulatedText,
+            part: "final",
+          });
+        }
+        if (delta?.reasoning_content) {
+          accumulatedReasoning += delta.reasoning_content;
+          onStreamDelta?.({
+            deltaReasoningText: delta.reasoning_content,
+            accumulatedReasoningText: accumulatedReasoning,
+            part: "reasoning",
+          });
+        }
+        if (chunk.usage) {
+          lastUsage = chunk.usage;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Build a synthetic DeepSeekResponse from accumulated stream data
+  return {
+    choices: [
+      {
+        message: {
+          content: accumulatedText,
+          ...(accumulatedReasoning ? { reasoning_content: accumulatedReasoning } : {}),
+        },
+      },
+    ],
+    ...(lastUsage ? { usage: lastUsage } : {}),
+  };
 }
 
 function resolveFetch(fetchImpl?: typeof fetch): typeof fetch {
@@ -174,6 +276,8 @@ export function createPiMonoDeepSeekTransport(options: PiMonoDeepSeekTransportOp
         };
       }
 
+      const shouldStream = request.stream ?? true;
+
       const response = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -183,7 +287,7 @@ export function createPiMonoDeepSeekTransport(options: PiMonoDeepSeekTransportOp
         body: JSON.stringify({
           model,
           messages: buildMessages(request),
-          stream: false,
+          stream: shouldStream,
           ...(request.temperature ?? options.temperature) !== undefined
             ? { temperature: request.temperature ?? options.temperature }
             : {},
@@ -204,7 +308,16 @@ export function createPiMonoDeepSeekTransport(options: PiMonoDeepSeekTransportOp
         };
       }
 
-      const payload = await response.json() as DeepSeekResponse;
+      let payload: DeepSeekResponse;
+
+      if (shouldStream && response.body) {
+        // Streaming mode: consume SSE events and emit deltas
+        payload = await consumeSseStream(response.body, request.onStreamDelta);
+      } else {
+        // Non-streaming mode: parse full JSON response
+        payload = await response.json() as DeepSeekResponse;
+      }
+
       const message = payload.choices?.[0]?.message;
       const rawContent = message?.content?.trim();
       if (!rawContent) {

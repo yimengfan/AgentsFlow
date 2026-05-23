@@ -10,7 +10,7 @@
  */
 export interface IpcChannelMap {
   // Flow management
-  "flow:list": { input: void; output: readonly FlowSummary[] };
+  "flow:list": { input: { workspacePath: string }; output: readonly FlowSummary[] };
   "flow:load": { input: { flowPath: string }; output: FlowSummary };
   "flow:save": { input: { flowPath: string; content: string }; output: void };
   "flow:validate": { input: { content: string }; output: ValidationResult };
@@ -105,6 +105,8 @@ export interface DirEntry {
   readonly isDirectory: boolean;
   /** Whether this entry is a flow file (.yml or .yaml) */
   readonly isFlowFile: boolean;
+  /** Whether this entry is a dot-prefixed directory (e.g. .agents-flow) */
+  readonly isHidden?: boolean;
 }
 
 /** File/directory metadata from stat(). */

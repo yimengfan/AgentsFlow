@@ -22,7 +22,8 @@
   "dependencies": {
     "@agentsflow/agent-contracts": "workspace:*",
     "@agentsflow/shared-contracts": "workspace:*",
-    "@agentsflow/flow-schema": "workspace:*"
+    "@agentsflow/flow-schema": "workspace:*",
+    "@agentsflow/prompt-asset-resolver": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.0.0"

@@ -53,6 +53,7 @@ export type {
   AgentEvent,
   AgentEventType,
   EventSchemaVersion,
+  StreamDeltaPayload,
 } from "./types/agent-event.js";
 export type {
   InterruptHandle,

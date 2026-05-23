@@ -146,6 +146,7 @@ export { AgentMainSpec } from "./nodes/agent-main.js";
 export { AgentSubSpec } from "./nodes/agent-sub.js";
 export { ControlPlanLoopSpec } from "./nodes/control-plan-loop.js";
 export { ControlFinishSpec } from "./nodes/control-finish.js";
+export { InputPromptSpec } from "./nodes/input-prompt.js";
 
 import { LoaderWorkDirSpec } from "./nodes/loader-work-dir.js";
 import { LoaderHttpAuthSpec } from "./nodes/loader-http-auth.js";
@@ -154,6 +155,7 @@ import { AgentMainSpec } from "./nodes/agent-main.js";
 import { AgentSubSpec } from "./nodes/agent-sub.js";
 import { ControlPlanLoopSpec } from "./nodes/control-plan-loop.js";
 import { ControlFinishSpec } from "./nodes/control-finish.js";
+import { InputPromptSpec } from "./nodes/input-prompt.js";
 
 // ─── Default Registry Factory ──────────────────────────────
 
@@ -162,6 +164,7 @@ export const BUILTIN_NODE_CLASSES: ReadonlyArray<new () => NodeSpecBase> = [
   LoaderWorkDirSpec,
   LoaderHttpAuthSpec,
   LoaderLocalDirSpec,
+  InputPromptSpec,
   AgentMainSpec,
   AgentSubSpec,
   ControlPlanLoopSpec,

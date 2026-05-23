@@ -9,7 +9,7 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   // Flow operations
   flow: {
-    list: (): Promise<any[]> => ipcRenderer.invoke("flow:list"),
+    list: (workspacePath: string): Promise<any[]> => ipcRenderer.invoke("flow:list", workspacePath),
     load: (filePath: string): Promise<string> => ipcRenderer.invoke("flow:load", filePath),
     save: (filePath: string, yaml: string): Promise<boolean> =>
       ipcRenderer.invoke("flow:save", filePath, yaml),

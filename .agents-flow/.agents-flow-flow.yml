@@ -1,0 +1,234 @@
+agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: .agents-flow-flow
+  description: 默认流程：主Agent生成计划 → 子Agent执行 → 主Agent评分 → 结束
+  version: 0.1.0
+  tags:
+    - starter
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      modelProfile:
+        model: deepseek-v4-flash
+        systemPrompt: You are a planning and evaluation agent.
+      adapterConfig:
+        transport: deepseek
+      toolPolicy:
+        allowedCapabilities: []
+        blockedTools: []
+        approvalRequirement: destructive_only
+      memoryPolicy:
+        visibleScopes:
+          - run
+        writableScopes:
+          - run
+      subagentPolicy:
+        allowedAgents:
+          - sub-agent
+        switchModes:
+          - flow-forced
+        returnStrategy: summary-only
+      timeouts:
+        turnMs: 60000
+        sessionMs: 300000
+      budgets:
+        maxSteps: 10
+    - agentId: sub-agent
+      adapterKind: pi-mono
+      modelProfile:
+        model: deepseek-v4-flash
+        systemPrompt: You are an execution agent. Carry out the plan.
+      adapterConfig:
+        transport: deepseek
+      toolPolicy:
+        allowedCapabilities: []
+        blockedTools: []
+        approvalRequirement: destructive_only
+      memoryPolicy:
+        visibleScopes:
+          - run
+        writableScopes:
+          - run
+          - node
+      subagentPolicy:
+        allowedAgents: []
+        switchModes: []
+        returnStrategy: summary-only
+      timeouts:
+        turnMs: 60000
+        sessionMs: 300000
+      budgets:
+        maxSteps: 20
+graph:
+  nodes:
+    - nodeId: loader-workdir
+      nodeKind: loader.work-dir
+      label: 加载工作目录
+      category: Loader/WorkDir
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: data
+          dataType: documents
+      params: []
+    - nodeId: main-prompt
+      nodeKind: agent.main
+      label: 主Agent - Plan
+      category: Agent/Main
+      agentId: main-agent
+      config:
+        turnMode: plan
+        userPrompt: 请根据用户输入生成一个简洁可执行的计划，输出重点步骤。
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: prompt
+          dataType: prompt
+        - portId: data
+          dataType: any
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+        - portId: plan
+          dataType: plan
+      params: []
+    - nodeId: sub-execute
+      nodeKind: agent.sub
+      label: 子Agent - 执行
+      category: Agent/Sub
+      agentId: sub-agent
+      config:
+        turnMode: normal
+        systemPrompt: 按照计划步骤执行任务。
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: prompt
+          dataType: prompt
+        - portId: data
+          dataType: any
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+      params: []
+    - nodeId: main-evaluate
+      nodeKind: agent.main
+      label: 主Agent - 评分
+      category: Agent/Main
+      agentId: main-agent
+      config:
+        turnMode: evaluate
+        evaluatePrompt: >-
+          评估执行结果，给出 0-1 评分。返回 JSON：
+          {"score": <number>, "canComplete": <boolean>, "reason": "<string>"}
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: data
+          dataType: any
+      outputPorts:
+        - portId: out
+          dataType: flow
+        - portId: result
+          dataType: string
+        - portId: score
+          dataType: score
+      params: []
+    - nodeId: finish
+      nodeKind: control.finish
+      label: 结束
+      category: Control/Finish
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+        - portId: result
+          dataType: any
+      outputPorts: []
+      params: []
+  edges:
+    # 加载 → 主Agent Plan
+    - source: loader-workdir
+      target: main-prompt
+      sourceHandle: out
+      targetHandle: in
+    - source: loader-workdir
+      target: main-prompt
+      sourceHandle: data
+      targetHandle: data
+      dataEdge: true
+    # 主Agent Plan → 子Agent执行
+    - source: main-prompt
+      target: sub-execute
+      sourceHandle: out
+      targetHandle: in
+    - source: main-prompt
+      target: sub-execute
+      sourceHandle: result
+      targetHandle: prompt
+      dataEdge: true
+    # 执行 → 评分
+    - source: sub-execute
+      target: main-evaluate
+      sourceHandle: result
+      targetHandle: data
+      dataEdge: true
+    - source: sub-execute
+      target: main-evaluate
+      sourceHandle: out
+      targetHandle: in
+    # 评分 → 结束
+    - source: main-evaluate
+      target: finish
+      sourceHandle: result
+      targetHandle: result
+      dataEdge: true
+    - source: main-evaluate
+      target: finish
+      sourceHandle: out
+      targetHandle: in
+  startNodeId: loader-workdir
+runtime:
+  maxConcurrency: 1
+  defaultTurnTimeoutMs: 60000
+  persistEvents: true
+  persistMemorySnapshots: false
+layout:
+  positions:
+    - nodeId: loader-workdir
+      x: 50
+      y: 200
+    - nodeId: main-prompt
+      x: 300
+      y: 200
+    - nodeId: sub-execute
+      x: 550
+      y: 200
+    - nodeId: main-evaluate
+      x: 800
+      y: 200
+    - nodeId: finish
+      x: 1050
+      y: 200
+  nodeBindings:
+    - nodeId: main-prompt
+      agentId: main-agent
+    - nodeId: sub-execute
+      agentId: sub-agent
+    - nodeId: main-evaluate
+      agentId: main-agent
+  viewport:
+    x: 0
+    y: 0
+    zoom: 0.8

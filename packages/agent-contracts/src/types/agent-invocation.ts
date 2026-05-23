@@ -1,6 +1,7 @@
 import type { ToolSurface } from "./tool-surface.js";
 import type { MemoryScopePolicy } from "./memory-scope-policy.js";
 import type { SubagentSwitchRequest } from "./subagent-switch-request.js";
+import type { StreamDeltaPayload } from "./agent-event.js";
 
 /**
  * Turn mode determines how the agent should interpret and execute this invocation.
@@ -103,6 +104,11 @@ export interface AgentInvocation {
 
   /** Whether the adapter should stream partial results */
   readonly stream?: boolean;
+
+  /** Callback for streaming deltas. When provided and stream=true,
+   *  the adapter should call this for each incremental output chunk
+   *  instead of waiting until the full result is ready. */
+  readonly onStreamDelta?: (delta: StreamDeltaPayload) => void;
 
   /** Structured output constraint or schema reference */
   readonly expectedOutput?: {

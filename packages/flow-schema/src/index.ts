@@ -37,3 +37,32 @@ export {
 export { parseFlowYaml, parseFlowYamlWithSemantics, serializeFlowYaml, validateFlowDefinition, safeValidateFlowDefinition, safeValidateFlowDefinitionWithSemantics } from "./lib/parse.js";
 export { migrateFlow } from "./lib/migrate.js";
 export { validateFlowSemantics, isPortTypeCompatible, type SemanticValidationResult } from "./lib/validate.js";
+
+// .agents-flow prompt asset schemas
+export {
+  AgentFileFrontmatterSchema,
+  InstructionFileFrontmatterSchema,
+  SkillFileFrontmatterSchema,
+  ResolvedAgentAssetSchema,
+  ResolvedInstructionAssetSchema,
+  ResolvedSkillAssetSchema,
+  ManifestErrorCodeSchema,
+  ManifestErrorSchema,
+  PromptSegmentSchema,
+  PromptAssetManifestSchema,
+  ProviderPromptPackageSchema,
+  type AgentFileFrontmatter,
+  type InstructionFileFrontmatter,
+  type SkillFileFrontmatter,
+  type ResolvedAgentAsset,
+  type ResolvedInstructionAsset,
+  type ResolvedSkillAsset,
+  type ManifestErrorCode,
+  type ManifestError,
+  type PromptSegment,
+  type PromptAssetManifest,
+  type ProviderPromptPackage,
+  type NodeConfigOverrides,
+  type RunInputData,
+  type ProviderAdapter,
+} from "./schema/agents-flow-assets.js";

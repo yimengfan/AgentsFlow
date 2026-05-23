@@ -67,6 +67,8 @@ export const AgentDefSchema = z.object({
   }).optional().default({}),
   /** Adapter-specific configuration */
   adapterConfig: z.record(z.unknown()).optional(),
+  /** Built-in output kind — determines which output port the runtime publishes to */
+  outputKind: z.enum(["text", "plan", "score"]).optional(),
 });
 
 export type AgentDef = z.infer<typeof AgentDefSchema>;
@@ -210,6 +212,8 @@ export const NodeDefSchema = z.object({
   description: z.string().optional(),
   /** Default agent binding for this node */
   agentId: z.string().optional(),
+  /** Reference to an external .agent.md agentId; takes precedence over agentId when present */
+  agentRef: z.string().optional(),
   /** Node-specific config (varies by nodeType) */
   config: z.record(z.unknown()).optional().default({}),
   /** Input port definitions */

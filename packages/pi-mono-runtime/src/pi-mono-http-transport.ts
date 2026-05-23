@@ -73,10 +73,14 @@ export function createPiMonoHttpTransport(options: PiMonoHttpTransportOptions): 
     },
 
     runTurn(request: PiMonoTurnRequest): Promise<PiMonoTurnResponse> {
+      // Strip non-serializable fields before sending over HTTP
+      const { onStreamDelta, stream, ...serializable } = request;
+      void onStreamDelta;
+      void stream;
       return requestJson<PiMonoTurnResponse>(fetchImpl, `${baseUrl}/turns`, {
         method: "POST",
         headers,
-        body: JSON.stringify(request),
+        body: JSON.stringify(serializable),
       });
     },
 

@@ -29,7 +29,14 @@ Use the following document layers.
 1. `docs/adr/002-flow-runtime-extension.md`
 2. `docs/specs/001-flow-node-contract.md`
 3. `docs/specs/002-runtime-binding.md`
-4. Canonical schema in `packages/flow-schema/src/schema/flow-definition.ts`
+4. `docs/specs/003-agents-flow-repo-spec.md`
+5. Canonical schema in `packages/flow-schema/src/schema/flow-definition.ts`
+
+### Changing agent definitions or prompt assets
+
+1. `docs/specs/003-agents-flow-repo-spec.md`
+2. `packages/flow-schema/src/schema/agents-flow-assets.ts`
+3. `packages/prompt-asset-resolver/` (scanner, parser, resolver, assembler, provider-package, adapter-registry)
 
 ### Changing the workbench UI shell
 
@@ -37,6 +44,13 @@ Use the following document layers.
 2. `.github/copilot-instructions.md`
 3. `packages/ui-flow/src/components/workbench.tsx`
 4. `packages/ui-flow/src/store/workbench-store.ts`
+
+### Adding or modifying tests
+
+1. `docs/testing-supplementation.md`
+2. `.github/copilot-instructions.md` §5 (测试约束)
+3. `packages/testing-kit/` (FakeAgentAdapter, golden fixtures)
+4. Existing test files in the target package
 
 ## Current Document Set
 
@@ -49,11 +63,13 @@ Use the following document layers.
 
 - `docs/specs/001-flow-node-contract.md`: node kind, port, param, debug, and custom-node maintenance contract
 - `docs/specs/002-runtime-binding.md`: current executable path from `node.agentId` to adapter transport
+- `docs/specs/003-agents-flow-repo-spec.md`: `.agents-flow/` directory convention, prompt asset model, agent reference binding, prompt assembly order
 
 ### Supporting Guides
 
 - `MAINTENANCE.md`: maintainer-facing setup, build, release, and troubleshooting handbook
 - `CONTRIBUTING.md`: contributor workflow and verification checklist
+- `docs/testing-supplementation.md`: test addition principles, per-package gap analysis, naming conventions, fixture patterns, and quality gates
 - `.github/copilot-instructions.md`: AI-specific hard rules and doc lookup order
 
 ## Authoring Rules

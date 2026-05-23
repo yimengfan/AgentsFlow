@@ -10,6 +10,7 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
+  type EdgeTypes,
   type OnNodesChange,
   type OnEdgesChange,
   type OnConnect,
@@ -19,14 +20,18 @@ import {
   type Connection,
   type IsValidConnection,
   type NodeProps,
+  type EdgeProps,
+  getBezierPath,
   useReactFlow,
   applyNodeChanges,
 } from "@xyflow/react";
 import type { FlowDefinition, NodeDef, EdgeDef, PortDataType } from "@agentsflow/flow-schema";
 import type { NodeSpec } from "@agentsflow/node-spec-registry";
 import { NodeContextMenu, portColor } from "./node-context-menu.js";
-import { SURFACE, BORDER, TEXT, TYPO, SPACING } from "./workbench-tokens.js";
+import { SURFACE, BORDER, TEXT, TYPO, SPACING, ACCENT } from "./workbench-tokens.js";
 import { buildFlowRegistry, countNodesByKind, validateConnection } from "../lib/flow-graph.js";
+import { useRuntimeStore } from "../store/runtime-store.js";
+import { useWorkspaceStore } from "../store/workspace-store.js";
 
 // ─── Node kind → color ─────────────────────────────────────
 
@@ -82,6 +87,18 @@ function SpecNode({ data, selected, id }: NodeProps) {
   const instanceInputPorts = d.inputPorts ?? [];
   const instanceOutputPorts = d.outputPorts ?? [];
 
+  // Read runtime status for this node
+  const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
+  const nodeStatus = useRuntimeStore((state) => {
+    const run = activeFlowPath ? state.runsByFlowPath.get(activeFlowPath) : undefined;
+    return run?.nodeStates.get(nodeId)?.status ?? "idle";
+  });
+  const nodeStreaming = useRuntimeStore((state) => {
+    const run = activeFlowPath ? state.runsByFlowPath.get(activeFlowPath) : undefined;
+    const ns = run?.nodeStates.get(nodeId);
+    return ns?.status === "running" ? ns.streamingText ?? null : null;
+  });
+
   // Build input handles from spec (or default single "in" handle)
   const inputPorts = instanceInputPorts.length > 0
     ? [...instanceInputPorts]
@@ -135,6 +152,17 @@ function SpecNode({ data, selected, id }: NodeProps) {
     ? { left: `${14 + i * 14}px`, bottom: -4 }
     : { top: `${28 + i * 12}px`, right: -4 };
 
+  // Runtime status badge style
+  const statusBorderColor =
+    nodeStatus === "running"
+      ? ACCENT.alertAmber
+      : nodeStatus === "completed"
+        ? ACCENT.runGreen
+        : nodeStatus === "failed"
+          ? ACCENT.errorRed
+          : "transparent";
+  const statusPulse = nodeStatus === "running";
+
   return (
     <div
       style={{
@@ -147,8 +175,33 @@ function SpecNode({ data, selected, id }: NodeProps) {
         minWidth: isHorizontal ? 180 : 140,
         maxWidth: 240,
         position: "relative",
+        border: statusBorderColor !== "transparent" ? `2px solid ${statusBorderColor}` : undefined,
+        ...(statusPulse ? { animation: "af-pulse-border 1.5s ease-in-out infinite" } : {}),
       }}
     >
+      {/* Runtime status badge */}
+      {nodeStatus !== "idle" && (
+        <div
+          style={{
+            position: "absolute",
+            top: -6,
+            right: -6,
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: statusBorderColor,
+            border: `2px solid ${bg}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 8,
+            color: "#fff",
+            ...(statusPulse ? { animation: "af-pulse-dot 1.5s ease-in-out infinite" } : {}),
+          }}
+        >
+          {nodeStatus === "running" ? "⟳" : nodeStatus === "completed" ? "✓" : "✗"}
+        </div>
+      )}
       {/* Header */}
       <div
         style={{
@@ -238,6 +291,35 @@ function SpecNode({ data, selected, id }: NodeProps) {
         />
       ))}
 
+      {/* Runtime streaming text preview */}
+      {nodeStreaming && (
+        <div
+          style={{
+            fontSize: TYPO.smallFontSize - 2,
+            opacity: 0.7,
+            marginTop: 4,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: 200,
+          }}
+        >
+          {nodeStreaming.slice(0, 60)}…
+          <span
+            style={{
+              display: "inline-block",
+              width: 4,
+              height: 8,
+              background: "#fff",
+              borderRadius: 1,
+              marginLeft: 2,
+              animation: "af-blink 0.6s ease-in-out infinite",
+              verticalAlign: "text-bottom",
+            }}
+          />
+        </div>
+      )}
+
       {/* Port labels (small, below node body) */}
       {outputDataPorts.length > 0 && (
         <div
@@ -286,6 +368,195 @@ const nodeTypes: NodeTypes = {
   router: SpecNode as any,
   loader: SpecNode as any,
   control: SpecNode as any,
+};
+
+// ─── Data Preview Edge ─────────────────────────────────────
+
+/**
+ * Custom edge component that shows a data preview tooltip on hover.
+ * Displays the source node's port output and target node's input for the
+ * connected handles, pulled from the runtime store's nodeStates.
+ */
+function DataPreviewEdge({
+  id,
+  source,
+  target,
+  sourceHandleId,
+  targetHandleId,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  selected,
+  animated,
+  style,
+  markerEnd,
+  data,
+}: EdgeProps) {
+  const [hovered, setHovered] = useState(false);
+
+  // Get node debug states from the runtime store for the active flow
+  const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
+  const latestRun = useRuntimeStore((state) =>
+    activeFlowPath ? state.runsByFlowPath.get(activeFlowPath) ?? null : null,
+  );
+
+  // Compute data preview for this edge
+  const sourceNodeState = latestRun?.nodeStates.get(source);
+  const targetNodeState = latestRun?.nodeStates.get(target);
+
+  // Source output (from portOutputs keyed by sourceHandleId)
+  const sourceOutput = sourceHandleId
+    ? sourceNodeState?.portOutputs[sourceHandleId]
+    : sourceNodeState?.portOutputs["out"] ?? sourceNodeState?.finalText;
+
+  // Target input (from inputs keyed by targetHandleId)
+  const targetInput = targetHandleId
+    ? targetNodeState?.inputs[targetHandleId]
+    : targetNodeState?.inputs["in"] ?? targetNodeState?.inputs["previousResult"];
+
+  const hasData = sourceOutput !== undefined || targetInput !== undefined;
+  const edgeData = data as { dataEdge?: boolean } | undefined;
+  const isDataEdge = edgeData?.dataEdge === true || !!(sourceHandleId && targetHandleId);
+
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+  });
+
+  // Format a data value for display
+  const formatDataValue = (value: unknown): string => {
+    if (value === undefined) return "";
+    if (typeof value === "string") {
+      return value.length > 100 ? value.slice(0, 100) + "…" : value;
+    }
+    try {
+      const json = JSON.stringify(value, null, 2);
+      return json.length > 200 ? json.slice(0, 200) + "…" : json;
+    } catch {
+      return String(value);
+    }
+  };
+
+  const edgeStroke = isDataEdge ? "#a78bfa" : ((style?.stroke as string) ?? "#6b7280");
+
+  return (
+    <g
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Invisible wider path for easier hover targeting */}
+      <path
+        d={edgePath}
+        fill="none"
+        strokeWidth={20}
+        stroke="transparent"
+        style={{ cursor: "pointer" }}
+      />
+      {/* Visible edge path */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={selected ? "#60a5fa" : edgeStroke}
+        strokeWidth={selected ? 3 : (isDataEdge ? 2 : 1.5)}
+        markerEnd={markerEnd}
+        className={animated ? "animated" : ""}
+        style={{
+          ...(selected ? { filter: "drop-shadow(0 0 4px rgba(96, 165, 250, 0.5))" } : {}),
+        }}
+      />
+
+      {/* Small data indicator dot on the edge midpoint */}
+      {hasData && !hovered && (
+        <circle
+          cx={labelX}
+          cy={labelY}
+          r={4}
+          fill={ACCENT.runGreen}
+          stroke={SURFACE.editor}
+          strokeWidth={1.5}
+          style={{ pointerEvents: "none" }}
+        />
+      )}
+
+      {/* Data preview tooltip on hover */}
+      {hovered && hasData && (
+        <foreignObject
+          x={labelX - 120}
+          y={labelY - 10}
+          width={240}
+          height={180}
+          style={{ overflow: "visible", pointerEvents: "none" }}
+        >
+          <div
+            style={{
+              background: SURFACE.sidebar,
+              border: `1px solid ${BORDER.default}`,
+              borderRadius: 6,
+              padding: `${SPACING.sm}px ${SPACING.md}px`,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              fontSize: TYPO.smallFontSize,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              maxWidth: 240,
+              maxHeight: 180,
+              overflow: "auto",
+              color: TEXT.primary,
+            }}
+          >
+            <div style={{ color: ACCENT.indigo, fontWeight: 600, marginBottom: 4, fontSize: TYPO.smallFontSize }}>
+              📊 Data Flow
+            </div>
+            {sourceOutput !== undefined && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ color: TEXT.secondary, fontSize: TYPO.smallFontSize, marginBottom: 2 }}>
+                  ↓ Output{sourceHandleId ? ` (${sourceHandleId})` : ""}
+                </div>
+                <div
+                  style={{
+                    color: TEXT.primary,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    background: SURFACE.editor,
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    borderRadius: 4,
+                    border: `1px solid ${BORDER.default}`,
+                  }}
+                >
+                  {formatDataValue(sourceOutput)}
+                </div>
+              </div>
+            )}
+            {targetInput !== undefined && (
+              <div>
+                <div style={{ color: TEXT.secondary, fontSize: TYPO.smallFontSize, marginBottom: 2 }}>
+                  ↓ Input{targetHandleId ? ` (${targetHandleId})` : ""}
+                </div>
+                <div
+                  style={{
+                    color: TEXT.primary,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    background: SURFACE.editor,
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    borderRadius: 4,
+                    border: `1px solid ${BORDER.default}`,
+                  }}
+                >
+                  {formatDataValue(targetInput)}
+                </div>
+              </div>
+            )}
+          </div>
+        </foreignObject>
+      )}
+    </g>
+  );
+}
+
+const edgeTypes: EdgeTypes = {
+  dataPreview: DataPreviewEdge as any,
 };
 
 /**
@@ -488,6 +759,8 @@ export interface FlowCanvasProps {
   onRemoveNode?: (nodeId: string) => void;
   /** Callback when an edge is deleted */
   onRemoveEdge?: (source: string, target: string, sourceHandle?: string, targetHandle?: string) => void;
+  /** Callback when an edge is selected */
+  onSelectEdge?: (edgeId: string | null) => void;
 }
 
 // ─── FlowCanvas ────────────────────────────────────────────
@@ -501,6 +774,7 @@ export function FlowCanvas({
   onAddNode,
   onRemoveNode,
   onRemoveEdge,
+  onSelectEdge,
 }: FlowCanvasProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -570,6 +844,7 @@ export function FlowCanvas({
     if (!flow) return [];
     return flow.graph.edges.map((e, i) => ({
       id: `edge-${e.source}-${e.target}-${i}`,
+      type: "dataPreview",
       source: e.source,
       target: e.target,
       ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {}),
@@ -581,6 +856,7 @@ export function FlowCanvas({
       style: e.dataEdge
         ? { stroke: "#a78bfa", strokeWidth: 2 }
         : { stroke: "#6b7280", strokeWidth: 1.5 },
+      data: { dataEdge: e.dataEdge ?? false },
     }));
   }, [flow]);
 
@@ -611,6 +887,9 @@ export function FlowCanvas({
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       for (const change of changes) {
+        if (change.type === "select" && change.id) {
+          onSelectEdge?.(change.selected ? change.id : null);
+        }
         if (change.type === "remove" && change.id) {
           // Find the edge in flow definition to get source/target
           const rfEdge = rfEdges.find((e) => e.id === change.id);
@@ -625,7 +904,7 @@ export function FlowCanvas({
         }
       }
     },
-    [onRemoveEdge, rfEdges],
+    [onRemoveEdge, onSelectEdge, rfEdges],
   );
 
   const onConnect: OnConnect = useCallback(
@@ -837,6 +1116,18 @@ export function FlowCanvas({
           stroke: #93c5fd !important;
           stroke-width: 2.5px !important;
         }
+        @keyframes af-pulse-border {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        @keyframes af-pulse-dot {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.3); }
+        }
+        @keyframes af-blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
       `}</style>
       <ReactFlow
         nodes={localNodes}
@@ -851,6 +1142,7 @@ export function FlowCanvas({
         onReconnect={onReconnect}
         onEdgeContextMenu={onEdgeContextMenu}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         deleteKeyCode={["Backspace", "Delete"]}
         proOptions={{ hideAttribution: true }}

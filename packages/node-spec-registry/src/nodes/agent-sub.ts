@@ -16,6 +16,7 @@ export class AgentSubSpec extends NodeSpecBase {
   override readonly icon = "bot";
   override readonly tags = ["agent", "sub", "executor"] as const;
   readonly legacyNodeType = "agent";
+  override readonly presetAgentRef = "sub-agent";
 
   override readonly inputPorts = [
     { portId: "in", dataType: "flow" as PortDataType, required: true, label: "入" },

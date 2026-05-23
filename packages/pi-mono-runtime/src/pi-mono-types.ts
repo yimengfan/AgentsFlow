@@ -4,6 +4,7 @@ import type {
   AgentTurnError,
   AgentTurnStatus,
   AgentTurnUsage,
+  StreamDeltaPayload,
   ToolCallSummary,
   TurnArtifact,
   TurnMode,
@@ -58,6 +59,8 @@ export interface PiMonoTurnRequest {
   readonly temperature?: number;
   readonly adapterConfig?: Record<string, unknown>;
   readonly metadata?: Record<string, unknown>;
+  readonly stream?: boolean;
+  readonly onStreamDelta?: (delta: StreamDeltaPayload) => void;
 }
 
 export interface PiMonoTurnResponse {

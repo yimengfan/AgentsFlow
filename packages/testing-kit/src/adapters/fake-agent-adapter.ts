@@ -6,6 +6,7 @@ import type {
   AgentSessionContext,
   AgentInvocation,
   AgentTurnResult,
+  StreamDeltaPayload,
   TurnMode,
 } from "@agentsflow/agent-contracts";
 
@@ -193,6 +194,23 @@ export class FakeAgentAdapter implements AgentAdapter {
 
     // Build turn-mode-aware response
     const { finalText, structuredOutput } = this.buildTurnResponse(invocation);
+
+    // Simulate streaming by emitting delta events before returning the final result
+    const shouldStream = this.config.simulateStreaming || invocation.onStreamDelta !== undefined;
+    if (shouldStream && invocation.onStreamDelta && finalText) {
+      const words = finalText.split(" ");
+      let accumulated = "";
+      for (let i = 0; i < words.length; i++) {
+        const deltaText = i === 0 ? words[i] : ` ${words[i]}`;
+        accumulated += deltaText;
+        const delta: StreamDeltaPayload = {
+          accumulatedText: accumulated,
+          part: "final",
+          ...(deltaText ? { deltaText } : {}),
+        };
+        invocation.onStreamDelta(delta);
+      }
+    }
 
     // Build successful result
     return {

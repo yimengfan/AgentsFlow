@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
+import { parseFlowYaml, safeValidateFlowDefinition } from "@agentsflow/flow-schema";
 
 /**
  * Vite plugin that provides workspace REST API endpoints in dev mode.
@@ -55,7 +56,11 @@ function workspaceApiPlugin(): Plugin {
             }
             const entries = await fs.readdir(dirPath, { withFileTypes: true });
             const result = entries
-              .filter((entry) => !entry.name.startsWith("."))
+              .filter((entry) => {
+                // Only hide .git and node_modules; show all other dot entries
+                if (entry.name === ".git" || entry.name === "node_modules") return false;
+                return true;
+              })
               .map((entry) => {
                 const fullPath = path.join(dirPath, entry.name);
                 const isFlowFile = !entry.isDirectory() && /\.(yml|yaml)$/.test(entry.name);
@@ -64,6 +69,7 @@ function workspaceApiPlugin(): Plugin {
                   path: fullPath,
                   isDirectory: entry.isDirectory(),
                   isFlowFile,
+                  isHidden: entry.name.startsWith("."),
                 };
               })
               .sort((a, b) => {
@@ -159,6 +165,97 @@ function workspaceApiPlugin(): Plugin {
           } catch {
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify(null));
+          }
+          return;
+        }
+
+        // GET /api/flows/:flowPath — load a single flow YAML by its full path
+        // Must be matched BEFORE the /api/flows?workspacePath=... list route
+        if (url.startsWith("/api/flows/") && req.method === "GET") {
+          try {
+            // Extract the encoded flow path from URL: /api/flows/{encodedPath}
+            const encodedPath = url.slice("/api/flows/".length);
+            const flowPath = decodeURIComponent(encodedPath);
+
+            if (!flowPath) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "flowPath required" }));
+              return;
+            }
+
+            const content = await fs.readFile(flowPath, "utf-8");
+            res.setHeader("Content-Type", "text/plain");
+            res.end(content);
+          } catch (err) {
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: `Flow file not found: ${String(err)}` }));
+          }
+          return;
+        }
+
+        // GET /api/flows?workspacePath=... — scan workspace for flow YAML files
+        if (url.startsWith("/api/flows") && req.method === "GET") {
+          try {
+            const workspacePath = decodeURIComponent(new URL(url, "http://localhost").searchParams.get("workspacePath") ?? "");
+            if (!workspacePath) {
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify([]));
+              return;
+            }
+
+            // Recursively scan up to depth 3 for .yml/.yaml files
+            const flowSummaries: Array<{
+              flowPath: string;
+              name: string;
+              schemaVersion: string;
+              nodeCount: number;
+              agentCount: number;
+            }> = [];
+
+            async function scanDir(dirPath: string, depth: number): Promise<void> {
+              if (depth > 3) return;
+              let entries;
+              try {
+                entries = await fs.readdir(dirPath, { withFileTypes: true });
+              } catch { return; }
+
+              for (const entry of entries) {
+                // Skip .git and node_modules entirely; show other dot entries
+                if (entry.name === "node_modules" || entry.name === ".git") continue;
+
+                const fullPath = path.join(dirPath, entry.name);
+
+                if (entry.isDirectory()) {
+                  await scanDir(fullPath, depth + 1);
+                } else if (/\.(yml|yaml)$/.test(entry.name)) {
+                  try {
+                    const content = await fs.readFile(fullPath, "utf-8");
+                    const parsed = parseFlowYaml(content);
+                    const validation = safeValidateFlowDefinition(parsed);
+                    if (validation.success) {
+                      flowSummaries.push({
+                        flowPath: fullPath,
+                        name: parsed.meta?.name ?? entry.name.replace(/\.(yml|yaml)$/, ""),
+                        schemaVersion: parsed.meta?.schemaVersion ?? "1.0",
+                        nodeCount: parsed.graph?.nodes?.length ?? 0,
+                        agentCount: parsed.agents?.agentDefs?.length ?? 0,
+                      });
+                    }
+                  } catch {
+                    // Skip invalid flow files
+                  }
+                }
+              }
+            }
+
+            await scanDir(workspacePath, 0);
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(flowSummaries));
+          } catch (err) {
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify([]));
           }
           return;
         }

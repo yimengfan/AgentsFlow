@@ -6,8 +6,9 @@ import type {
   TurnMode,
   ToolSurface,
   MemoryScopePolicy,
+  StreamDeltaPayload,
 } from "@agentsflow/agent-contracts";
-import type { FlowDefinition, NodeDef, AgentDef } from "@agentsflow/flow-schema";
+import type { FlowDefinition, NodeDef, AgentDef, ProviderPromptPackage } from "@agentsflow/flow-schema";
 import type { EventBus } from "../events/event-bus.js";
 
 function serializePromptValue(value: unknown): string | undefined {
@@ -113,7 +114,17 @@ export class NodeExecutor {
         ? { timeoutMs: agentDef.timeouts.turnMs }
         : {}),
       ...(metadata !== undefined ? { metadata } : {}),
-      stream: false,
+      stream: true,
+      onStreamDelta: (delta: StreamDeltaPayload) => {
+        this.eventBus.emit({
+          eventType: "agent_stream_delta" as AgentEventType,
+          runId: context.runId,
+          nodeId: node.nodeId,
+          ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+          invocationId: invocation.invocationId,
+          payload: delta as unknown as Record<string, unknown>,
+        });
+      },
     };
 
     // Emit turn started event — only include optional fields if they have values
@@ -180,6 +191,8 @@ export class NodeExecutor {
 
   /**
    * Resolve the prompt for an invocation based on turnMode and node config.
+   * If a ProviderPromptPackage is available (from .agents-flow resolver),
+   * use its assembled prompt segments instead of the legacy config-based prompt.
    */
   private resolvePrompt(
     node: NodeDef,
@@ -187,6 +200,22 @@ export class NodeExecutor {
     context: RunContextSnapshot,
     turnMode: TurnMode,
   ): string | undefined {
+    // If a prompt package was assembled by the resolver, use it.
+    // As a safety net, append the user's actual task if the assembled
+    // prompt doesn't already contain it (e.g., if runInput was empty
+    // during assembly but is now available in context.input).
+    if (context.promptPackage) {
+      const assembled = context.promptPackage.prompt;
+      if (assembled && assembled.trim().length > 0) {
+        const userTask = serializePromptValue(context.input.userPrompt);
+        // If the user task exists and isn't already in the assembled prompt, append it
+        if (userTask && !assembled.includes(userTask)) {
+          return joinPromptSections([assembled, `User Task:\n${userTask}`]);
+        }
+        return assembled;
+      }
+    }
+
     const config = node.config as Record<string, unknown> | undefined;
     const input = context.input;
     const systemPrompt = config?.systemPrompt as string | undefined
@@ -208,22 +237,31 @@ export class NodeExecutor {
       ]);
     }
 
-    // For plan turns, use the user prompt or a default planning prompt
+    // For plan turns, combine the node config directive (if any) with the
+    // user's actual task prompt. The config directive is a template that
+    // tells the agent HOW to plan; the user prompt is WHAT to plan for.
     if (turnMode === "plan") {
-      const userPrompt = serializePromptValue(input.userPrompt)
-        ?? upstreamPrompt
-        ?? config?.userPrompt as string | undefined;
+      const configDirective = config?.userPrompt as string | undefined;
+      const userTask = serializePromptValue(input.userPrompt) ?? upstreamPrompt;
+      // Prefer the user's actual task prompt, with config directive as prefix
+      const planPrompt = joinPromptSections([
+        configDirective ?? undefined,
+        userTask ?? "Create a plan to accomplish the given task. Return structured output.",
+      ]);
       return joinPromptSections([
         systemPrompt,
-        userPrompt ?? "Create a plan to accomplish the given task. Return structured output.",
+        planPrompt,
         inputData ? `Context Data:\n${inputData}` : undefined,
       ]);
     }
 
-    // For normal turns, use system + user prompt
-    const userPrompt = serializePromptValue(input.userPrompt)
-      ?? upstreamPrompt
-      ?? config?.userPrompt as string | undefined;
+    // For normal turns, combine config directive with user task
+    const userTask = serializePromptValue(input.userPrompt) ?? upstreamPrompt;
+    const configDirective = config?.userPrompt as string | undefined;
+    const userPrompt = joinPromptSections([
+      configDirective ?? undefined,
+      userTask ?? undefined,
+    ]);
 
     return joinPromptSections([
       systemPrompt,
@@ -294,4 +332,6 @@ export interface RunContextSnapshot {
   readonly iteration?: number;
   /** Turn mode for this execution (plan/evaluate/normal/summarize) */
   readonly turnMode?: TurnMode;
+  /** Assembled prompt package from .agents-flow resolver (takes priority over legacy prompt) */
+  readonly promptPackage?: ProviderPromptPackage;
 }

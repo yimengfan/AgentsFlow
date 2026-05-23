@@ -15,6 +15,7 @@ import { usePrimaryButtonHover, useButtonHover } from "./use-button-hover.js";
 export function BottomPreview() {
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
   const documents = useWorkspaceStore((s) => s.documents);
+  const promptAssetManifest = useWorkspaceStore((s) => s.promptAssetManifest);
   const toggleBottomPanel = useWorkbenchStore((s) => s.toggleBottomPanel);
   const startFlow = useRuntimeStore((s) => s.startFlow);
   const clearRun = useRuntimeStore((s) => s.clearRun);
@@ -29,11 +30,11 @@ export function BottomPreview() {
   const handleStart = useCallback(async () => {
     if (!activeFlowPath || !doc?.flow) return;
     try {
-      await startFlow(activeFlowPath, doc.flow, userPrompt.trim().length > 0 ? { userPrompt } : {});
+      await startFlow(activeFlowPath, doc.flow, userPrompt.trim().length > 0 ? { userPrompt } : {}, promptAssetManifest);
     } catch {
       // Runtime store records failure state; no local fallback needed here.
     }
-  }, [activeFlowPath, doc?.flow, startFlow, userPrompt]);
+  }, [activeFlowPath, doc?.flow, startFlow, userPrompt, promptAssetManifest]);
 
   const handleClear = useCallback(() => {
     if (!activeFlowPath) {

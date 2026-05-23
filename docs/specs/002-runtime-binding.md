@@ -134,6 +134,36 @@ For the current pi-mono runtime, configuration resolves in this order:
 
 This precedence allows the default starter flow to run in browser preview with the repo-level DeepSeek environment file, while still permitting a future real pi-mono backend override.
 
+## Extended Binding Path (with .agents-flow)
+
+When a node specifies `agentRef`, the binding path extends through the `PromptAssetManifest`:
+
+```mermaid
+flowchart LR
+    Node[graph.nodes[*]] --> AgentRef{node.agentRef?}
+    AgentRef -->|present| Manifest[PromptAssetManifest]
+    Manifest --> ResolvedAgent[ResolvedAgentAsset]
+    ResolvedAgent --> AdapterKind[agent.adapterKind]
+    AdapterKind --> Registry[resolveRuntimeAdapter]
+    Registry --> Adapter[AgentAdapter instance]
+    Adapter --> Transport{resolveTransport}
+    AgentRef -->|absent| AgentId[node.agentId]
+    AgentId --> AgentDef[agents.agentDefs[*]]
+    AgentDef --> AdapterKind2[agentDef.adapterKind]
+    AdapterKind2 --> Registry2[resolveRuntimeAdapter]
+    Registry2 --> Adapter2[AgentAdapter instance]
+    Adapter2 --> Transport2{resolveTransport}
+```
+
+Rules:
+
+- When `node.agentRef` is present, resolution goes through the `PromptAssetManifest`.
+- When `node.agentRef` is absent, resolution falls through to the existing `agentId → agentDefs` path.
+- Both paths converge at `adapterKind → runtime adapter extension → transport`.
+- `agentRef` takes precedence over `agentId` when both are present.
+
+Full specification: `docs/specs/003-agents-flow-repo-spec.md`.
+
 ## Non-Goals
 
 - This document does not make `layout.nodeBindings[*].overrides` executable.

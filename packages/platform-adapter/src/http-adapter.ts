@@ -1,4 +1,6 @@
 import type { PlatformApi } from "./platform-api.js";
+import type { PromptAssetManifest } from "@agentsflow/flow-schema";
+import { resolvePromptAssetManifest, type ScannerFs } from "@agentsflow/prompt-asset-resolver";
 
 /**
  * HTTP adapter — delegates to a REST API backend.
@@ -91,8 +93,15 @@ export function createHttpAdapter(baseUrl?: string): PlatformApi {
     platform: "web",
 
     flow: {
-      list: () => request<readonly any[]>(`/flows`),
-      load: (flowPath) => request<string>(`/flows/${encodeURIComponent(flowPath)}`),
+      list: (workspacePath) =>
+        request<readonly any[]>(`/flows?workspacePath=${encodeURIComponent(workspacePath)}`),
+      load: async (flowPath) => {
+        const res = await fetch(`${base}/flows/${encodeURIComponent(flowPath)}`);
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
+        return res.text();
+      },
       save: (flowPath, content) =>
         request<void>(`/flows/${encodeURIComponent(flowPath)}`, {
           method: "PUT",
@@ -162,6 +171,41 @@ export function createHttpAdapter(baseUrl?: string): PlatformApi {
       // Future: WebSocket or SSE subscription.
       console.warn("Platform event subscriptions not available in web mode");
       return () => {};
+    },
+
+    scanPromptAssets: async (workspaceDir: string): Promise<PromptAssetManifest> => {
+      // Build a ScannerFs backed by the HTTP workspace API
+      const sep = workspaceDir.includes("/") ? "/" : "\\";
+      const resolve = (relPath: string) => `${workspaceDir}${sep}${relPath}`;
+
+      const fs: ScannerFs = {
+        async readDir(path: string): Promise<readonly string[]> {
+          const entries = await request<readonly { name: string }[]>(`/workspace/read-dir?path=${encodeURIComponent(resolve(path))}`);
+          return entries.map((e) => e.name);
+        },
+        async readFile(path: string): Promise<string> {
+          const result = await request<{ content: string } | null>(`/workspace/read-file?path=${encodeURIComponent(resolve(path))}`);
+          if (result === null) {
+            throw new Error(`File not found: ${resolve(path)}`);
+          }
+          if (typeof result === "object" && "content" in result) {
+            return result.content;
+          }
+          return String(result);
+        },
+        async stat(path: string): Promise<{ type: "file" | "directory" } | undefined> {
+          const result = await request<{ isDirectory: boolean } | null>(`/workspace/stat?path=${encodeURIComponent(resolve(path))}`);
+          if (result === null) return undefined;
+          if (typeof result === "object" && "isDirectory" in result) {
+            return {
+              type: result.isDirectory ? "directory" : "file",
+            };
+          }
+          return undefined;
+        },
+      };
+
+      return resolvePromptAssetManifest(fs);
     },
   };
 }

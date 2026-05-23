@@ -1,5 +1,6 @@
 import type { AgentAdapter, AgentTurnResult, SubagentSwitchDecision, MemoryScopePolicy } from "@agentsflow/agent-contracts";
-import type { FlowDefinition, NodeDef } from "@agentsflow/flow-schema";
+import type { FlowDefinition, NodeDef, PromptAssetManifest, ProviderPromptPackage } from "@agentsflow/flow-schema";
+import { defaultAdapterRegistry, type ProviderAdapterRegistry } from "@agentsflow/prompt-asset-resolver";
 import { EventBus } from "../events/event-bus.js";
 import { NodeExecutor, type RunContextSnapshot } from "../executor/node-executor.js";
 import { RunContext, type EvaluateResult } from "../context/run-context.js";
@@ -29,18 +30,30 @@ export class FlowScheduler {
   private nodeExecutor: NodeExecutor;
   private arbiter: SubagentArbiter;
   private adapterResolver: AdapterResolver;
+  private promptAdapterRegistry: ProviderAdapterRegistry;
   private activeRuns: Map<string, RunContext> = new Map();
+  /** Resolved prompt asset manifest from .agents-flow/ (null if not loaded) */
+  private promptAssetManifest: PromptAssetManifest | null = null;
 
-  constructor(adapterResolver: AdapterResolver) {
+  constructor(adapterResolver: AdapterResolver, promptAdapterRegistry?: ProviderAdapterRegistry) {
     this.eventBus = new EventBus();
     this.nodeExecutor = new NodeExecutor(this.eventBus);
     this.arbiter = new SubagentArbiter();
     this.adapterResolver = adapterResolver;
+    this.promptAdapterRegistry = promptAdapterRegistry ?? defaultAdapterRegistry;
   }
 
   /** Access the event bus for subscription */
   get events(): EventBus {
     return this.eventBus;
+  }
+
+  /**
+   * Set the prompt asset manifest for resolving agentRef bindings.
+   * Called after scanning .agents-flow/ directory.
+   */
+  setPromptAssetManifest(manifest: PromptAssetManifest | null): void {
+    this.promptAssetManifest = manifest;
   }
 
   /**
@@ -208,6 +221,8 @@ export class FlowScheduler {
 
   /**
    * Execute an agent node — resolve adapter, build invocation with turnMode, execute.
+   * If node.agentRef is set and a promptAssetManifest is available, use the
+   * prompt-asset-resolver to assemble the prompt package.
    */
   private async executeAgentNode(
     node: NodeDef,
@@ -237,6 +252,44 @@ export class FlowScheduler {
 
     // Collect input data from connected ports (data edges)
     const nodeInput = this.collectNodeInput(node, ctx, input);
+
+    // Resolve prompt package via .agents-flow agentRef if available
+    let promptPackage: ProviderPromptPackage | undefined;
+    if (node.agentRef && this.promptAssetManifest) {
+      const configOverrides: { systemPrompt?: string; userPrompt?: string } = {};
+      const sys = (node.config as Record<string, unknown>)?.systemPrompt;
+      const usr = (node.config as Record<string, unknown>)?.userPrompt;
+      if (typeof sys === "string") configOverrides.systemPrompt = sys;
+      if (typeof usr === "string") configOverrides.userPrompt = usr;
+
+      // Build runInput for prompt assembly: the user's actual task prompt and
+      // any upstream data. Data may be an object (from port propagation) —
+      // serialize it so the assembler can include it in the prompt.
+      const runInput: { userPrompt?: string; data?: string } = {};
+      if (typeof nodeInput.userPrompt === "string" && nodeInput.userPrompt.trim().length > 0) {
+        runInput.userPrompt = nodeInput.userPrompt;
+      }
+      if (typeof nodeInput.data === "string" && nodeInput.data.trim().length > 0) {
+        runInput.data = nodeInput.data;
+      } else if (nodeInput.data !== undefined && nodeInput.data !== null) {
+        try {
+          const serialized = JSON.stringify(nodeInput.data, null, 2);
+          if (serialized.trim().length > 0) {
+            runInput.data = serialized;
+          }
+        } catch {
+          // Skip non-serializable data
+        }
+      }
+
+      promptPackage = this.promptAdapterRegistry.packagePrompt(
+        agentDef.adapterKind,
+        node.agentRef,
+        this.promptAssetManifest,
+        configOverrides,
+        runInput,
+      );
+    }
 
     // Build memory policy
     const memoryPolicy: MemoryScopePolicy = {
@@ -270,6 +323,7 @@ export class FlowScheduler {
       memoryPolicy,
       iteration: ctx.iteration,
       turnMode: turnMode as "normal" | "plan" | "evaluate" | "summarize",
+      ...(promptPackage !== undefined ? { promptPackage } : {}),
     };
 
     // Execute the node
@@ -283,17 +337,20 @@ export class FlowScheduler {
     // Store the result in the context
     ctx.setNodeOutput(node.nodeId, result);
 
+    // Determine outputKind for port mapping
+    const outputKind = node.agentRef
+      ? (this.promptAssetManifest?.agents.get(node.agentRef)?.outputKind ?? "text")
+      : (agentDef.outputKind ?? "text");
+
     // Propagate output to ports
     ctx.setPortValue(node.nodeId, "out", result.finalText ?? "");
     ctx.setPortValue(node.nodeId, "result", result.finalText ?? "");
 
-    // For agent.main with plan turnMode, also set plan port
-    if (turnMode === "plan") {
+    // Map output based on outputKind
+    if (outputKind === "plan" && turnMode === "plan") {
       ctx.setPortValue(node.nodeId, "plan", result.structuredOutput ?? { plan: result.finalText });
     }
-
-    // For evaluate turnMode, set score port
-    if (turnMode === "evaluate" && result.structuredOutput) {
+    if (outputKind === "score" && turnMode === "evaluate" && result.structuredOutput) {
       ctx.setPortValue(node.nodeId, "score", result.structuredOutput);
     }
 
@@ -510,6 +567,10 @@ export class FlowScheduler {
     ctx: RunContext,
     globalInput: Record<string, unknown>,
   ): Record<string, unknown> {
+    // Preserve the global run-level userPrompt separately so it is not
+    // overridden by node config.userPrompt (which is a template directive,
+    // not the user's actual task input).
+    const runUserPrompt = typeof globalInput.userPrompt === "string" ? globalInput.userPrompt : undefined;
     const nodeInput: Record<string, unknown> = { ...globalInput };
 
     // Find edges targeting this node
@@ -533,13 +594,19 @@ export class FlowScheduler {
       }
     }
 
-    // Also include prompt from node config if available
+    // Also include prompt from node config if available.
+    // Node config.userPrompt is a template directive — store it as
+    // "configUserPrompt" so it does NOT override the run-level userPrompt.
     const config = node.config as Record<string, unknown> | undefined;
     if (config?.systemPrompt) {
       nodeInput.systemPrompt = config.systemPrompt;
     }
     if (config?.userPrompt) {
-      nodeInput.userPrompt = config.userPrompt;
+      nodeInput.configUserPrompt = config.userPrompt;
+    }
+    // Restore the run-level userPrompt if it was previously saved
+    if (runUserPrompt !== undefined) {
+      nodeInput.userPrompt = runUserPrompt;
     }
 
     return nodeInput;

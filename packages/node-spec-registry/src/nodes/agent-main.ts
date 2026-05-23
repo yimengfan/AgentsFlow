@@ -17,6 +17,7 @@ export class AgentMainSpec extends NodeSpecBase {
   override readonly maxInstances = 1;
   override readonly tags = ["agent", "main", "planner"] as const;
   readonly legacyNodeType = "agent";
+  override readonly presetAgentRef = "main-agent";
 
   override readonly inputPorts = [
     { portId: "in", dataType: "flow" as PortDataType, required: true, label: "入" },

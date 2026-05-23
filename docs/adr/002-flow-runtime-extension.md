@@ -288,6 +288,22 @@ UI 调试面板按节点展示：
 
 这层是运行时派生数据，不写回 YAML。
 
+## .agents-flow Normalization Rationale
+
+With the `.agents-flow/` directory convention (see `docs/specs/003-agents-flow-repo-spec.md`), agent definitions can live outside inline `agents.agentDefs`. The runtime uses a normalized internal model (`PromptAssetManifest`) as the authoritative representation, not the raw markdown files.
+
+This is consistent with the existing "双层模型":
+
+- **Persisted layer**: `.agents-flow/*.agent.md` files are the human-editable source (like YAML), parsed into `PromptAssetManifest` at load time.
+- **Execution layer**: The runtime resolves `node.agentRef` through the manifest, then follows the same `adapterKind → registry → adapter → transport` path as inline `agentDef`.
+- **Debug layer**: Source attribution via `PromptSegment[]` enables the inspector to show which `.agents-flow/` file contributed which prompt section.
+
+Normalization rules:
+
+- The parsed `ResolvedAgentAsset` is the authoritative source for prompt assembly, not the raw markdown.
+- Built-in mode (Copilot-style file naming) is the first provider adapter, not the upper constraint.
+- Future Copilot/Claude adapter implementations will consume the same normalized model.
+
 ## Consequences
 
 正面影响：
