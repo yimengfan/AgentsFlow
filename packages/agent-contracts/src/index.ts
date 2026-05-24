@@ -65,3 +65,9 @@ export type {
   CompatibilityResult,
   CompatibilityLevel,
 } from "./types/agent-registry.js";
+export type {
+  DataTrace,
+  ErrorTrace,
+  NodeExecutionTrace,
+  PromptTraceEntry,
+} from "./types/trace-types.js";

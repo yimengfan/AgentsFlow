@@ -2,7 +2,7 @@ import React from "react";
 import { useWorkbenchStore, type LeftViewId } from "../store/workbench-store.js";
 import { SURFACE, BORDER, TEXT, ACTIVITY_BAR, SPACING, BUTTON } from "./workbench-tokens.js";
 import { useButtonHover } from "./use-button-hover.js";
-import { ExplorerIcon, WorkspaceIcon, PreviewIcon } from "./icons.js";
+import { ExplorerIcon, WorkspaceIcon, PreviewIcon, SettingsIcon } from "./icons.js";
 
 /**
  * ActivityBar — narrow vertical icon strip on the far left.
@@ -24,10 +24,12 @@ export function ActivityBar() {
   const explorerBtn = useButtonHover();
   const workspaceBtn = useButtonHover();
   const previewBtn = useButtonHover();
+  const settingsBtn = useButtonHover();
   const hoverMap = {
     explorer: explorerBtn,
     workspace: workspaceBtn,
     preview: previewBtn,
+    settings: settingsBtn,
   } as const;
 
   return (
@@ -76,6 +78,40 @@ export function ActivityBar() {
           </button>
         );
       })}
+
+      {/* Spacer to push settings to bottom */}
+      <div style={{ flex: 1 }} />
+
+      {/* Settings button — pinned to bottom */}
+      {(() => {
+        const isActive = activeLeftView === "settings";
+        const { hoverBg, hoverProps, isHovered, buttonStyle } = settingsBtn;
+        const bg = isActive
+          ? (isHovered ? BUTTON.activeBg : SURFACE.sidebar)
+          : hoverBg;
+        return (
+          <button
+            onClick={() => setActiveLeftView("settings")}
+            title="Settings"
+            style={{
+              ...buttonStyle,
+              width: 36,
+              height: 36,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: bg,
+              borderLeft: isActive ? `2px solid ${BORDER.active}` : "2px solid transparent",
+              color: isActive ? TEXT.primary : buttonStyle.color,
+              padding: 0,
+              marginBottom: SPACING.sm,
+            }}
+            {...hoverProps}
+          >
+            <SettingsIcon />
+          </button>
+        );
+      })()}
     </div>
   );
 }

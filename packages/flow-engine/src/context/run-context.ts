@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentTurnResult, InterruptHandle } from "@agentsflow/agent-contracts";
+import type { NodeExecutionTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition } from "@agentsflow/flow-schema";
 
 /**
@@ -45,6 +46,8 @@ export class RunContext {
   private loopCounters: Map<string, number> = new Map();
   /** Which output handle was activated for the current node (for conditional routing) */
   private activeOutputHandle: string | undefined;
+  /** Node execution traces: nodeId → NodeExecutionTrace */
+  private nodeTraces: Map<string, NodeExecutionTrace> = new Map();
 
   constructor(runId: string, flow: FlowDefinition) {
     this.runId = runId;
@@ -200,5 +203,22 @@ export class RunContext {
     const defaultEdge = edges.find((e) => !e.sourceHandle) ?? edges[0];
     this.activeOutputHandle = undefined;
     return defaultEdge?.target;
+  }
+
+  // ─── Node Trace Store ──────────────────────────────────────
+
+  /** Store the execution trace for a node */
+  setNodeTrace(nodeId: string, trace: NodeExecutionTrace): void {
+    this.nodeTraces.set(nodeId, trace);
+  }
+
+  /** Get the execution trace for a node */
+  getNodeTrace(nodeId: string): NodeExecutionTrace | undefined {
+    return this.nodeTraces.get(nodeId);
+  }
+
+  /** Get all node execution traces */
+  getAllNodeTraces(): ReadonlyMap<string, NodeExecutionTrace> {
+    return this.nodeTraces;
   }
 }

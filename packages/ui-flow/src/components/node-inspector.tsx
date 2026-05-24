@@ -1,5 +1,6 @@
 import type { CSSProperties, JSX } from "react";
 import { useMemo, useState } from "react";
+import type { DataTrace, ErrorTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition, NodeDef, ParamDef, PromptAssetManifest, PromptSegment, ProviderPromptPackage } from "@agentsflow/flow-schema";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useRuntimeStore, type PromptSourceRef } from "../store/runtime-store.js";
@@ -18,6 +19,7 @@ interface NodeInspectorProps {
   readonly selectedNodeId: string | null;
   readonly selectedEdgeId?: string | null;
   readonly onRevealYaml?: (target: YamlRevealTarget) => void;
+  readonly onSelectNode?: (nodeId: string) => void;
 }
 
 function formatValue(value: unknown): string {
@@ -105,6 +107,125 @@ function renderPromptSource(
         </div>
       ) : null}
     </button>
+  );
+}
+
+function renderDataTrace(
+  trace: DataTrace,
+  direction: "input" | "output",
+  flow: FlowDefinition | null,
+  onSelectNode?: (nodeId: string) => void,
+): JSX.Element {
+  const sourceNode = flow?.graph.nodes.find((n) => n.nodeId === trace.sourceNodeId);
+  const targetNode = flow?.graph.nodes.find((n) => n.nodeId === trace.targetNodeId);
+  const isClickable = direction === "input"
+    ? Boolean(onSelectNode) && trace.sourceNodeId !== "__global_input__"
+    : Boolean(onSelectNode);
+  const navigateTo = direction === "input" ? trace.sourceNodeId : trace.targetNodeId;
+
+  const portLabel = direction === "input"
+    ? `${sourceNode?.label ?? trace.sourceNodeId}:${trace.sourcePortId} → ${trace.targetPortId}`
+    : `${trace.sourcePortId} → ${targetNode?.label ?? trace.targetNodeId}:${trace.targetPortId}`;
+
+  const valuePreview = trace.value === undefined
+    ? "(no value)"
+    : typeof trace.value === "string"
+      ? trace.value.length > 80 ? `${trace.value.slice(0, 80)}…` : trace.value
+      : typeof trace.value === "object"
+        ? JSON.stringify(trace.value).length > 80
+          ? `${JSON.stringify(trace.value).slice(0, 80)}…`
+          : JSON.stringify(trace.value)
+        : String(trace.value);
+
+  return (
+    <button
+      key={trace.traceId}
+      type="button"
+      onClick={() => {
+        if (isClickable && onSelectNode && navigateTo) {
+          onSelectNode(navigateTo);
+        }
+      }}
+      style={{
+        textAlign: "left",
+        width: "100%",
+        background: direction === "input" ? "rgba(96, 165, 250, 0.08)" : "rgba(52, 211, 153, 0.08)",
+        color: TEXT.primary,
+        border: `1px solid ${direction === "input" ? "rgba(96, 165, 250, 0.25)" : "rgba(52, 211, 153, 0.25)"}`,
+        borderRadius: 6,
+        padding: `${SPACING.xs}px ${SPACING.sm}px`,
+        cursor: isClickable ? "pointer" : "default",
+      }}
+    >
+      <div style={{ fontSize: TYPO.smallFontSize, color: direction === "input" ? "#60a5fa" : "#34d399", fontWeight: 500 }}>
+        {direction === "input" ? "⬅" : "➡"} {portLabel}
+      </div>
+      <div style={{ marginTop: 2, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: TEXT.muted, whiteSpace: "pre-wrap" }}>
+        {valuePreview}
+      </div>
+    </button>
+  );
+}
+
+function renderErrorTrace(
+  errorTrace: ErrorTrace,
+  onRevealYaml?: (target: YamlRevealTarget) => void,
+): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div
+      style={{
+        background: "rgba(248, 113, 113, 0.08)",
+        border: "1px solid rgba(248, 113, 113, 0.25)",
+        borderRadius: 6,
+        padding: `${SPACING.xs}px ${SPACING.sm}px`,
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: SPACING.xs,
+          background: "transparent",
+          border: "none",
+          color: "#f87171",
+          cursor: "pointer",
+          fontSize: TYPO.smallFontSize,
+          fontWeight: 600,
+          padding: 0,
+          width: "100%",
+          textAlign: "left",
+        }}
+      >
+        <span>❌</span>
+        <span>{errorTrace.code}: {errorTrace.message}</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: TEXT.muted }}>{errorTrace.category}</span>
+        <span style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
+      </button>
+      {expanded ? (
+        <div style={{ marginTop: 4 }}>
+          {errorTrace.stack ? (
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: 11,
+                color: TEXT.muted,
+                whiteSpace: "pre-wrap",
+                maxHeight: 200,
+                overflow: "auto",
+              }}
+            >
+              {errorTrace.stack}
+            </pre>
+          ) : (
+            <div style={{ fontSize: 11, color: TEXT.muted }}>No stack trace available.</div>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -204,7 +325,7 @@ function renderParamField(
   );
 }
 
-export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, onRevealYaml }: NodeInspectorProps) {
+export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, onRevealYaml, onSelectNode }: NodeInspectorProps) {
   const updateNodeConfig = useWorkspaceStore((state) => state.updateNodeConfig);
   const updateNodeAgentRef = useWorkspaceStore((state) => state.updateNodeAgentRef);
   const promptAssetManifest = useWorkspaceStore((state) => state.promptAssetManifest);
@@ -429,13 +550,76 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
       ) : (
         <div style={{ flex: 1, overflow: "auto", padding: SPACING.md, display: "grid", gap: SPACING.md }}>
           <section style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 18, fontWeight: 600, color: TEXT.primary }}>{selectedNode.label ?? selectedNode.nodeId}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: TEXT.primary }}>{selectedNode.label ?? selectedNode.nodeId}</div>
+              {selectedNodeState?.status && selectedNodeState.status !== "idle" ? (
+                <span style={{
+                  fontSize: 11,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  fontWeight: 600,
+                  background: selectedNodeState.status === "failed" ? "rgba(248, 113, 113, 0.15)"
+                    : selectedNodeState.status === "running" ? "rgba(251, 191, 36, 0.15)"
+                    : selectedNodeState.status === "completed" ? "rgba(52, 211, 153, 0.15)"
+                    : "rgba(96, 165, 250, 0.15)",
+                  color: selectedNodeState.status === "failed" ? "#f87171"
+                    : selectedNodeState.status === "running" ? "#fbbf24"
+                    : selectedNodeState.status === "completed" ? "#34d399"
+                    : "#60a5fa",
+                }}>
+                  {selectedNodeState.status}
+                </span>
+              ) : null}
+              {selectedNodeState?.durationMs !== undefined ? (
+                <span style={{
+                  fontSize: 11,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "rgba(96, 165, 250, 0.1)",
+                  color: "#60a5fa",
+                }}>
+                  {selectedNodeState.durationMs >= 1000
+                    ? `${(selectedNodeState.durationMs / 1000).toFixed(1)}s`
+                    : `${selectedNodeState.durationMs}ms`}
+                </span>
+              ) : null}
+            </div>
             <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.muted }}>
               {selectedNode.nodeKind ?? selectedNode.nodeType ?? "agent"}
               {selectedNode.agentId ? ` · ${selectedNode.agentId}` : ""}
-              {selectedNodeState ? ` · ${selectedNodeState.status}` : ""}
             </div>
           </section>
+
+          {/* Error Trace — shown when node failed */}
+          {selectedNodeState?.errorTrace ? (
+            <section style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: TYPO.smallFontSize, color: "#f87171", textTransform: "uppercase", letterSpacing: 1 }}>
+                Error
+              </div>
+              {renderErrorTrace(selectedNodeState.errorTrace, onRevealYaml)}
+            </section>
+          ) : null}
+
+          {/* Data Provenance — trace-level I/O with click-to-navigate source nodes */}
+          {selectedNodeState && (selectedNodeState.inputTraces.length > 0 || selectedNodeState.outputTraces.length > 0) ? (
+            <section style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
+                Data Provenance
+              </div>
+              {selectedNodeState.inputTraces.length > 0 ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Inputs</div>
+                  {selectedNodeState.inputTraces.map((trace) => renderDataTrace(trace, "input", flow ?? null, onSelectNode))}
+                </div>
+              ) : null}
+              {selectedNodeState.outputTraces.length > 0 ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Outputs</div>
+                  {selectedNodeState.outputTraces.map((trace) => renderDataTrace(trace, "output", flow ?? null, onSelectNode))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {isAgentNode && (
             <section style={{ display: "grid", gap: 8 }}>
@@ -624,19 +808,25 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
             </div>
             <div style={{ display: "grid", gap: 6 }}>
               {selectedNode.inputPorts.map((port) => (
-                <div key={`in:${port.portId}`} style={{ padding: SPACING.sm, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
-                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>Input · {port.label ?? port.portId} · {port.dataType}</div>
-                  <div style={{ marginTop: 4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: TYPO.smallFontSize, color: TEXT.muted, whiteSpace: "pre-wrap" }}>
-                    {formatValue(selectedNodeState?.inputs[port.portId])}
-                  </div>
+                <div key={`in:${port.portId}`} style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
+                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>⬅ {port.label ?? port.portId} <span style={{ color: TEXT.muted }}>· {port.dataType}</span></div>
+                  {/* Show inline port value only when no trace data available */}
+                  {!(selectedNodeState && selectedNodeState.inputTraces.length > 0) && selectedNodeState?.inputs[port.portId] !== undefined ? (
+                    <div style={{ marginTop: 2, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: TEXT.muted, whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                      {formatValue(selectedNodeState.inputs[port.portId])}
+                    </div>
+                  ) : null}
                 </div>
               ))}
               {selectedNode.outputPorts.map((port) => (
-                <div key={`out:${port.portId}`} style={{ padding: SPACING.sm, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
-                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>Output · {port.label ?? port.portId} · {port.dataType}</div>
-                  <div style={{ marginTop: 4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: TYPO.smallFontSize, color: TEXT.muted, whiteSpace: "pre-wrap" }}>
-                    {formatValue(selectedNodeState?.portOutputs[port.portId])}
-                  </div>
+                <div key={`out:${port.portId}`} style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
+                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>➡ {port.label ?? port.portId} <span style={{ color: TEXT.muted }}>· {port.dataType}</span></div>
+                  {/* Show inline port value only when no trace data available */}
+                  {!(selectedNodeState && selectedNodeState.outputTraces.length > 0) && selectedNodeState?.portOutputs[port.portId] !== undefined ? (
+                    <div style={{ marginTop: 2, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: TEXT.muted, whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                      {formatValue(selectedNodeState.portOutputs[port.portId])}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

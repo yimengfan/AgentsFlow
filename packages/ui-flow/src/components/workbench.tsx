@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   Panel,
   PanelGroup,
@@ -8,6 +8,8 @@ import {
   type PanelOnExpand,
 } from "react-resizable-panels";
 import { useWorkbenchStore, type LeftViewId } from "../store/workbench-store.js";
+import { useWorkspaceStore } from "../store/workspace-store.js";
+import { usePlatform } from "@agentsflow/platform-adapter";
 import { Toolbar } from "./toolbar.js";
 import { ActivityBar } from "./activity-bar.js";
 import { ExplorerPane } from "./explorer-pane.js";
@@ -15,6 +17,7 @@ import { WorkspacePane } from "./workspace-pane.js";
 import { PreviewPane } from "./preview-pane.js";
 import { CenterWorkspace } from "./center-workspace.js";
 import { AssistantPanel } from "./assistant-panel.js";
+import { GlobalSettings } from "./global-settings.js";
 import {
   SURFACE,
   RESIZE_HANDLE,
@@ -66,6 +69,32 @@ export function Workbench() {
   const activeLeftView = useWorkbenchStore((s) => s.activeLeftView);
   const leftPanelRef = useRef<ImperativePanelHandle>(null);
   const rightPanelRef = useRef<ImperativePanelHandle>(null);
+  const platform = usePlatform();
+
+  // Cmd+S / Ctrl+S save handler
+  const handleSave = useCallback(async () => {
+    const { activeFlowPath, documents, saveFlow } = useWorkspaceStore.getState();
+    if (!activeFlowPath) return;
+    const doc = documents.get(activeFlowPath);
+    if (!doc || !doc.isDirty) return;
+    try {
+      await saveFlow(activeFlowPath, platform);
+    } catch (err) {
+      // Silently fail — the user can retry; future: show a toast
+      console.error("Save failed:", err);
+    }
+  }, [platform]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSave]);
 
   // Sync left panel collapse/expand with store (programmatic toggle).
   // Use isCollapsed() guard to prevent infinite loops:
@@ -113,6 +142,8 @@ export function Workbench() {
         return <WorkspacePane />;
       case "preview":
         return <PreviewPane />;
+      case "settings":
+        return <GlobalSettings />;
       case "explorer":
       default:
         return <ExplorerPane />;

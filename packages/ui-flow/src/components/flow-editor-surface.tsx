@@ -107,6 +107,7 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
               selectedNodeId={doc.selectedNodeId}
               selectedEdgeId={doc.selectedEdgeId}
               onRevealYaml={handleRevealYaml}
+              onSelectNode={selectNode}
             />
           </Panel>
         </>

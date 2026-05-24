@@ -81,3 +81,18 @@ export function PreviewIcon() {
     </svg>
   );
 }
+
+/**
+ * SettingsIcon — gear icon for application settings.
+ * Classic gear/cog outline representing configuration.
+ */
+export function SettingsIcon() {
+  return (
+    <svg {...svgProps}>
+      {/* Gear outer */}
+      <path d="M10 1.5l.7 2.3a.5.5 0 0 0 .4.35l2.3.2a.5.5 0 0 1 .3.85l-1.6 1.7a.5.5 0 0 0-.12.48l.5 2.25a.5.5 0 0 1-.72.55L10 8.3a.5.5 0 0 0-.5 0l-2 1.15a.5.5 0 0 1-.72-.55l.5-2.25a.5.5 0 0 0-.12-.48L5.56 4.5a.5.5 0 0 1 .3-.85l2.3-.2a.5.5 0 0 0 .4-.35L9.26 1.5a.5.5 0 0 1 .88 0z" />
+      {/* Center circle */}
+      <circle cx="10" cy="7" r="2" />
+    </svg>
+  );
+}

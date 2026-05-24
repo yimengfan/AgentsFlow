@@ -151,6 +151,7 @@
 **必测场景**：
 - 运行时绑定路径（6 个）：正常路径、缺失 agentId、未知 agentDef、未知 adapterKind、session 复用、prompt 资产绑定。
 - Prompt 装配顺序（5 个）：完整 6 层装配、去重、优雅降级、source 归因、globalSystemPrompt 过滤。
+- Store → Component 渲染管线（4 个）：flow 切换后活跃文档数据更新、key 标识一致性、文档引用隔离、重复打开不创建重复文档。详见 `docs/testing-supplementation.md` §8。
 
 **工具与隔离**：
 - 迭代阶段先跑最窄的 package 级测试，收尾前再升级到仓库级验证。
@@ -260,7 +261,18 @@ E2E 验证测试的编写标准：
 - [ ] 如修改了依赖、workspace、脚手架或打包链路，已执行相应安装 / build / dist 流程，或已说明未执行原因。
 - [ ] 改动文件没有新增 diagnostics、类型错误、lint 问题或明显的调试残留，如临时日志、注释掉的旧代码、试验文件。
 - [ ] 对 schema、契约、运行时绑定、Prompt 资产或用户可见行为的修改，相关文档或说明已同步更新。
-- [ ] 最终回复会明确写出：做了什么、验证了什么、未完成或有风险的部分是什么。
+- [] Git commit（不 push）。
+log 内容：
+```
+修改任务：<简要描述改动内容> - {Agent}/{模型名}
+[ ] 修改列表 1
+[ ] 修改列表 2
+[ ] ...
+验证列表:
+[ ] 验证列表 1
+[ ] 验证列表 2
+```
+- [ ] 最终回复会明确写出：做了什么、验证了什么、未完成或有风险的部分是什么、提交 sha。
 
 ## 9. 附录：常见脚手架变更
 
@@ -293,4 +305,5 @@ E2E 验证测试的编写标准：
 - Web dev mode 不应被当成稳定的真实 `/api/flows` 后端；flow 相关 Web 验证应优先使用本地 stores 和 fakes。
 - 浏览器侧 HTTP 适配应使用相对路径和运行时 `origin`，不要硬编码 API 基地址。
 - 对壳层尺寸或颜色进行硬编码会偏离 Workbench token system。
+- 渲染 per-document 内容的组件（如 `<FlowEditorSurface>`）在 identity prop 变化时必须加 `key={identityProp}`，否则 React 复用组件实例会导致第三方 provider（如 `ReactFlowProvider`）的内部状态不重置。详见 `docs/testing-supplementation.md` §8.4。
 - 保持此文件简洁：稳定的设计理由放到 ADR，可执行约束放到 specs，新增文档时同步更新 `docs/README.md`。

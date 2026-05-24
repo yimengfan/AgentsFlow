@@ -89,15 +89,14 @@ function SpecNode({ data, selected, id }: NodeProps) {
 
   // Read runtime status for this node
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
-  const nodeStatus = useRuntimeStore((state) => {
+  const nodeState = useRuntimeStore((state) => {
     const run = activeFlowPath ? state.runsByFlowPath.get(activeFlowPath) : undefined;
-    return run?.nodeStates.get(nodeId)?.status ?? "idle";
+    return run?.nodeStates.get(nodeId);
   });
-  const nodeStreaming = useRuntimeStore((state) => {
-    const run = activeFlowPath ? state.runsByFlowPath.get(activeFlowPath) : undefined;
-    const ns = run?.nodeStates.get(nodeId);
-    return ns?.status === "running" ? ns.streamingText ?? null : null;
-  });
+  const nodeStatus = nodeState?.status ?? "idle";
+  const nodeStreaming = nodeState?.status === "running" ? nodeState.streamingText ?? null : null;
+  const nodeDurationMs = nodeState?.durationMs;
+  const nodeErrorTrace = nodeState?.errorTrace;
 
   // Build input handles from spec (or default single "in" handle)
   const inputPorts = instanceInputPorts.length > 0
@@ -200,6 +199,51 @@ function SpecNode({ data, selected, id }: NodeProps) {
           }}
         >
           {nodeStatus === "running" ? "⟳" : nodeStatus === "completed" ? "✓" : "✗"}
+        </div>
+      )}
+      {/* Duration label badge (top-left) */}
+      {nodeDurationMs !== undefined && nodeStatus !== "running" && (
+        <div
+          style={{
+            position: "absolute",
+            top: -8,
+            left: -8,
+            padding: "0px 4px",
+            borderRadius: 3,
+            background: "rgba(0,0,0,0.7)",
+            color: "#93c5fd",
+            fontSize: 9,
+            fontWeight: 600,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            lineHeight: "14px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {nodeDurationMs >= 1000 ? `${(nodeDurationMs / 1000).toFixed(1)}s` : `${nodeDurationMs}ms`}
+        </div>
+      )}
+      {/* Error indicator (bottom-left corner) */}
+      {nodeErrorTrace && nodeStatus === "failed" && (
+        <div
+          title={`${nodeErrorTrace.code}: ${nodeErrorTrace.message}`}
+          style={{
+            position: "absolute",
+            bottom: -6,
+            left: -6,
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            background: ACCENT.errorRed,
+            border: `2px solid ${bg}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 7,
+            color: "#fff",
+            fontWeight: 700,
+          }}
+        >
+          !
         </div>
       )}
       {/* Header */}
@@ -317,6 +361,24 @@ function SpecNode({ data, selected, id }: NodeProps) {
               verticalAlign: "text-bottom",
             }}
           />
+        </div>
+      )}
+
+      {/* Error message preview on failed nodes */}
+      {nodeErrorTrace && nodeStatus === "failed" && (
+        <div
+          style={{
+            fontSize: TYPO.smallFontSize - 2,
+            opacity: 0.85,
+            marginTop: 4,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: 200,
+            color: "#fca5a5",
+          }}
+        >
+          ❌ {nodeErrorTrace.message}
         </div>
       )}
 

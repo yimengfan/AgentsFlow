@@ -1,8 +1,8 @@
-import type { AgentAdapter, AgentTurnResult, SubagentSwitchDecision, MemoryScopePolicy } from "@agentsflow/agent-contracts";
+import type { AgentAdapter, AgentTurnResult, SubagentSwitchDecision, MemoryScopePolicy, DataTrace, NodeExecutionTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition, NodeDef, PromptAssetManifest, ProviderPromptPackage } from "@agentsflow/flow-schema";
 import { defaultAdapterRegistry, type ProviderAdapterRegistry } from "@agentsflow/prompt-asset-resolver";
 import { EventBus } from "../events/event-bus.js";
-import { NodeExecutor, type RunContextSnapshot } from "../executor/node-executor.js";
+import { NodeExecutor, type RunContextSnapshot, type NodeExecutionResult } from "../executor/node-executor.js";
 import { RunContext, type EvaluateResult } from "../context/run-context.js";
 import { SubagentArbiter } from "../arbiter/subagent-arbiter.js";
 
@@ -253,6 +253,26 @@ export class FlowScheduler {
     // Collect input data from connected ports (data edges)
     const nodeInput = this.collectNodeInput(node, ctx, input);
 
+    // Build upstream trace data to pass to NodeExecutor
+    // Each incoming data edge produces a trace record showing provenance
+    const incomingEdges = ctx.flow.graph.edges.filter(
+      (e) => e.target === node.nodeId,
+    );
+    const upstreamTraces: Array<{ sourceNodeId: string; sourcePortId: string; targetPortId: string; value: unknown }> = [];
+    for (const edge of incomingEdges) {
+      if (edge.dataEdge && edge.sourceHandle && edge.targetHandle) {
+        const sourceValue = ctx.getPortValue(edge.source, edge.sourceHandle);
+        upstreamTraces.push({
+          sourceNodeId: edge.source,
+          sourcePortId: edge.sourceHandle,
+          targetPortId: edge.targetHandle,
+          value: sourceValue,
+        });
+      }
+    }
+    // Inject upstream traces into node input so NodeExecutor can build DataTrace records
+    nodeInput._upstreamTraces = upstreamTraces;
+
     // Resolve prompt package via .agents-flow agentRef if available
     let promptPackage: ProviderPromptPackage | undefined;
     if (node.agentRef && this.promptAssetManifest) {
@@ -327,12 +347,13 @@ export class FlowScheduler {
     };
 
     // Execute the node
-    const result = await this.nodeExecutor.executeNode(
+    const execResult = await this.nodeExecutor.executeNode(
       node,
       ctx.flow,
       adapter,
       snapshot,
     );
+    const result = execResult.turnResult;
 
     // Store the result in the context
     ctx.setNodeOutput(node.nodeId, result);
@@ -353,6 +374,14 @@ export class FlowScheduler {
     if (outputKind === "score" && turnMode === "evaluate" && result.structuredOutput) {
       ctx.setPortValue(node.nodeId, "score", result.structuredOutput);
     }
+
+    // Build output traces — which downstream nodes consume this node's output
+    const outputTraces = this.buildOutputTraces(node, ctx);
+    const completeTrace: NodeExecutionTrace = {
+      ...execResult.trace,
+      outputTraces,
+    };
+    ctx.setNodeTrace(node.nodeId, completeTrace);
 
     // Handle subagent delegation proposal
     if (result.delegationProposal) {
@@ -638,5 +667,39 @@ export class FlowScheduler {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Build output traces for a node — record which downstream nodes
+   * consume each output port value.
+   */
+  private buildOutputTraces(
+    node: NodeDef,
+    ctx: RunContext,
+  ): readonly DataTrace[] {
+    const traces: DataTrace[] = [];
+    const timestamp = Date.now();
+
+    // Find outgoing edges from this node
+    const outgoingEdges = ctx.flow.graph.edges.filter(
+      (e) => e.source === node.nodeId,
+    );
+
+    for (const edge of outgoingEdges) {
+      if (edge.dataEdge && edge.sourceHandle && edge.targetHandle) {
+        const value = ctx.getPortValue(node.nodeId, edge.sourceHandle);
+        traces.push({
+          traceId: `trace-${ctx.runId}-${node.nodeId}-out-${edge.sourceHandle}-${edge.target}`,
+          sourceNodeId: node.nodeId,
+          sourcePortId: edge.sourceHandle,
+          targetNodeId: edge.target,
+          targetPortId: edge.targetHandle,
+          value,
+          timestamp,
+        });
+      }
+    }
+
+    return traces;
   }
 }

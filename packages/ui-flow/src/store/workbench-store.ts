@@ -12,7 +12,7 @@ import { persist } from "zustand/middleware";
  */
 
 /** Left sidebar view identifiers */
-export type LeftViewId = "workspace" | "explorer" | "preview";
+export type LeftViewId = "workspace" | "explorer" | "preview" | "settings";
 
 /** Right sidebar view identifiers */
 export type RightViewId = "assistant" | "run-detail";

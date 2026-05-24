@@ -283,7 +283,104 @@ afterEach(() => {
 | Prompt 资产变更不补测试 | 必须补 parser + assembly + binding tests |
 | 手改 `dist/` 或 `tsbuildinfo` | 只编辑 `src/` 源码 |
 
-## 8. 测试用例模板
+## 8. Store → Component 渲染管线测试规范
+
+### 8.1 问题背景
+
+2025-06 回归：用户从 chat 下拉选择不同 flow 时，flow 画布不刷新。
+
+**根因**：`CenterWorkspace` 在 `<FlowEditorSurface>` 上缺少 `key={activeDoc.flowPath}`，导致 React 复用已有组件实例（含 `ReactFlowProvider` 及其内部 store），旧 flow 的 nodes/edges 无法被清除。
+
+**测试缺口**：E2E 测试只验证了 store 层的 `openFlow`/`setActiveFlow` 行为，没有验证"activeFlowPath 变更 → 活跃文档切换 → 画布数据应刷新"的完整管线。由于 vitest 无法测试 React 组件渲染，需要在 store 层验证不变量，并通过代码规范约束组件层实现。
+
+### 8.2 两条防线
+
+| 防线 | 层级 | 验证内容 | 工具 |
+|------|------|---------|------|
+| **数据不变量** | Store | `activeFlowPath` 变更后，`documents.get(activeFlowPath)` 返回新 flow 的数据 | vitest |
+| **组件 key 规范** | 组件 | 所有依赖 identity 切换的组件必须加 `key={identityProp}` | 代码审查 + 文档约束 |
+
+### 8.3 数据不变量测试（Store 层）
+
+**必须验证的场景**：
+
+1. **切换 flow 时活跃文档数据更新**：打开 A、B 两个 flow，`setActiveFlow(A)` → `documents.get(activeFlowPath)` 的 flow graph 反映 A 的节点，而非 B 的
+2. **key 标识一致性**：用于 `key` prop 的值（通常是 `flowPath`）在两个不同 flow 之间必须不同，且能唯一映射到正确的 `DocumentState`
+3. **文档引用隔离**：不同 flowPath 对应的 `DocumentState` 必须是不同的对象引用（`expect(docA).not.toBe(docB)`）
+4. **重复打开不创建重复文档**：对已打开的 flow 再次 `openFlow` 不应创建新的 `DocumentState` 条目
+
+**测试模式**：
+
+```typescript
+describe("REGRESSION: flow switching updates active document data", () => {
+  it("switching activeFlowPath changes the active document's flow graph", () => {
+    const { openFlow, setActiveFlow } = useWorkspaceStore.getState();
+
+    // 打开两个不同 flow（节点集合不同）
+    openFlow(pathA, yamlA);
+    openFlow(pathB, yamlB);
+
+    // 切换到 A — documents.get(activeFlowPath) 必须反映 A 的节点
+    setActiveFlow(pathA);
+    const activeDoc = useWorkspaceStore.getState().documents.get(
+      useWorkspaceStore.getState().activeFlowPath!,
+    );
+    expect(activeDoc?.flow?.graph.nodes.map((n) => n.nodeId))
+      .toEqual(["node-a1"]);
+
+    // 切换回 B — 必须反映 B 的节点
+    setActiveFlow(pathB);
+    const docB = useWorkspaceStore.getState().documents.get(
+      useWorkspaceStore.getState().activeFlowPath!,
+    );
+    expect(docB?.flow?.graph.nodes.map((n) => n.nodeId))
+      .toEqual(["node-b1", "node-b2"]);
+  });
+});
+```
+
+### 8.4 组件 key 规范（代码约束）
+
+**规则**：任何渲染 per-document 内容的组件，当其 identity 属性（如 `flowPath`）变化时，必须通过 `key` prop 强制 React 重建组件树。
+
+**适用场景**：
+
+| 组件 | key 值 | 原因 |
+|------|--------|------|
+| `<FlowEditorSurface>` | `key={flowPath}` | 内含 `<ReactFlowProvider>`，其内部 store 不会因 props 变化自动重置 |
+| 其他包含第三方 provider 的 per-document 容器 | `key={identityProp}` | 第三方库通常在 constructor/init 中缓存状态，不会响应 prop 变化 |
+
+**判断标准**：如果组件内含以下任一模式，必须加 `key`：
+- 第三方 context provider（如 `ReactFlowProvider`、`QueryClientProvider`）
+- `useRef` + `useEffect` 初始化的持久状态
+- `useState` 的初始值依赖外部的 identity prop
+
+**反模式**：试图通过 `useEffect(() => { resetState() }, [identityProp])` 来同步状态 — 这要求组件正确处理"部分更新"，极易遗漏边角情况。`key` 方式更安全，因为它让 React 走完整的 unmount → mount 路径。
+
+### 8.5 回归测试命名约定
+
+回归测试使用 `REGRESSION:` 前缀，并在注释中说明根因：
+
+```typescript
+// REGRESSION: chat 选择 flow 时 flow 页面不刷新
+// Root cause: CenterWorkspace lacked key={flowPath} on FlowEditorSurface
+it("REGRESSION: switching activeFlowPath changes the active document's flow graph", () => {
+  // ...
+});
+```
+
+### 8.6 需求变更时的测试缺口检查
+
+每次新增或修改 UI 功能时，必须检查：
+
+1. **Store 数据管线**：新的 store 字段/方法是否有对应的 E2E 测试？
+2. **组件 identity 切换**：新组件是否在 identity prop 变化时需要 `key`？
+3. **第三方库状态缓存**：组件内是否使用了会在 prop 变化时不自动重置的第三方状态？
+4. **跨 flow 切换**：如果功能涉及 per-flow 状态，是否测试了 flow 切换后的数据隔离？
+
+如果任何一个答案为"是"或"不确定"，必须补测试或补 `key`。
+
+## 9. 测试用例模板
 
 ### 8.1 Schema 验证测试
 

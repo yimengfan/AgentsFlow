@@ -31,7 +31,7 @@ export function CenterWorkspace() {
     );
   } else {
     // docType === "flow"
-    editorContent = <FlowEditorSurface flowPath={activeDoc.flowPath} />;
+    editorContent = <FlowEditorSurface key={activeDoc.flowPath} flowPath={activeDoc.flowPath} />;
   }
 
   return (

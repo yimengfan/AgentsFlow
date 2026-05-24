@@ -2,6 +2,8 @@ import { create } from "zustand";
 import type {
   AgentEvent,
   AgentTurnUsage,
+  DataTrace,
+  ErrorTrace,
   StreamDeltaPayload,
   ToolCallSummary,
   TurnArtifact,
@@ -41,6 +43,14 @@ export interface NodeDebugState {
   readonly warnings?: readonly string[];
   readonly promptSources: readonly PromptSourceRef[];
   readonly lastEvent?: string;
+  /** Data provenance: where each input value came from */
+  readonly inputTraces: readonly DataTrace[];
+  /** Data provenance: where each output value goes */
+  readonly outputTraces: readonly DataTrace[];
+  /** Execution duration in milliseconds */
+  readonly durationMs?: number;
+  /** Structured error information if the node failed */
+  readonly errorTrace?: ErrorTrace;
 }
 
 export interface RunTimelineEntry {
@@ -65,6 +75,10 @@ export interface RunTimelineEntry {
   readonly artifacts?: readonly TurnArtifact[];
   readonly usage?: AgentTurnUsage;
   readonly warnings?: readonly string[];
+  /** Execution duration in milliseconds */
+  readonly durationMs?: number;
+  /** Structured error information if the node failed */
+  readonly errorTrace?: ErrorTrace;
 }
 
 export interface LocalRunRecord {
@@ -340,6 +354,22 @@ function buildNodeStates(
       ...(output?.warnings !== undefined ? { warnings: output.warnings } : {}),
       promptSources: buildPromptSources(agentDef, node, runInput, manifest),
       ...(lastEvent !== undefined ? { lastEvent } : {}),
+      // Trace data: prefer RunContext traces, fall back to event payload extraction
+      inputTraces: ctx?.getNodeTrace(node.nodeId)?.inputTraces ?? previous?.inputTraces ?? [],
+      outputTraces: ctx?.getNodeTrace(node.nodeId)?.outputTraces ?? previous?.outputTraces ?? [],
+      // Duration from event payload or RunContext trace
+      ...(event.nodeId === node.nodeId && event.eventType === "turn_completed" && typeof event.payload.durationMs === "number"
+        ? { durationMs: event.payload.durationMs as number }
+        : previous?.durationMs !== undefined ? { durationMs: previous.durationMs } : {}),
+      ...(event.nodeId === node.nodeId && event.eventType === "turn_failed" && typeof event.payload.durationMs === "number"
+        ? { durationMs: event.payload.durationMs as number }
+        : {}),
+      // Error trace from event payload or RunContext trace
+      ...(event.nodeId === node.nodeId && event.eventType === "turn_failed" && event.payload.errorTrace
+        ? { errorTrace: event.payload.errorTrace as ErrorTrace }
+        : ctx?.getNodeTrace(node.nodeId)?.errorTrace !== undefined
+          ? { errorTrace: ctx.getNodeTrace(node.nodeId)!.errorTrace }
+          : previous?.errorTrace !== undefined ? { errorTrace: previous.errorTrace } : {}),
     });
   }
 
@@ -460,6 +490,8 @@ function buildTimelineEntry(
       ...(output?.artifacts !== undefined ? { artifacts: output.artifacts } : {}),
       ...(output?.usage !== undefined ? { usage: output.usage } : {}),
       ...(output?.warnings !== undefined ? { warnings: output.warnings } : {}),
+      ...(typeof event.payload.durationMs === "number" ? { durationMs: event.payload.durationMs as number } : {}),
+      ...(event.payload.errorTrace ? { errorTrace: event.payload.errorTrace as ErrorTrace } : {}),
     };
   }
 

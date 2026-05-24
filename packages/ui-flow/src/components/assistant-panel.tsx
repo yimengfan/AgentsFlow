@@ -328,6 +328,8 @@ function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
     ? entry.streamingText
     : entry.content;
 
+  const [toolCallExpanded, setToolCallExpanded] = useState<number | null>(null);
+
   return (
     <div
       style={{
@@ -363,14 +365,76 @@ function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
             </span>
           )}
           {!isStreaming && entry.status && (
-            <span style={{ color: statusColor(entry.status), fontSize: TYPO.smallFontSize }}>
+            <span style={{
+              fontSize: 11,
+              padding: "1px 5px",
+              borderRadius: 4,
+              fontWeight: 600,
+              background: entry.status === "failed" ? "rgba(248, 113, 113, 0.15)"
+                : entry.status === "completed" ? "rgba(52, 211, 153, 0.15)"
+                : "rgba(96, 165, 250, 0.15)",
+              color: entry.status === "failed" ? "#f87171"
+                : entry.status === "completed" ? "#34d399"
+                : "#60a5fa",
+            }}>
               {entry.status}
             </span>
           )}
+          {entry.durationMs !== undefined && !isStreaming ? (
+            <span style={{
+              fontSize: 11,
+              padding: "1px 5px",
+              borderRadius: 4,
+              background: "rgba(96, 165, 250, 0.1)",
+              color: "#60a5fa",
+            }}>
+              {entry.durationMs >= 1000
+                ? `${(entry.durationMs / 1000).toFixed(1)}s`
+                : `${entry.durationMs}ms`}
+            </span>
+          ) : null}
           <span style={{ color: TEXT.muted, fontSize: TYPO.smallFontSize, marginLeft: "auto" }}>
             {new Date(entry.timestamp).toLocaleTimeString()}
           </span>
         </div>
+
+        {/* Error Trace — compact inline for failed entries */}
+        {entry.errorTrace && entry.status === "failed" ? (
+          <div
+            style={{
+              marginTop: 2,
+              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+              background: "rgba(248, 113, 113, 0.08)",
+              border: "1px solid rgba(248, 113, 113, 0.2)",
+              borderRadius: 4,
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <div style={{ color: "#f87171", fontSize: TYPO.smallFontSize, fontWeight: 600 }}>
+              ❌ {entry.errorTrace.code}: {entry.errorTrace.message}
+            </div>
+            {entry.errorTrace.category ? (
+              <div style={{ color: TEXT.muted, fontSize: 11 }}>Category: {entry.errorTrace.category}</div>
+            ) : null}
+            {entry.errorTrace.stack ? (
+              <details style={{ marginTop: 2 }}>
+                <summary style={{ cursor: "pointer", color: TEXT.muted, fontSize: 11 }}>Stack trace</summary>
+                <pre style={{
+                  margin: 0,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 11,
+                  color: TEXT.muted,
+                  whiteSpace: "pre-wrap",
+                  maxHeight: 150,
+                  overflow: "auto",
+                }}>
+                  {entry.errorTrace.stack}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Content */}
         <div
@@ -452,31 +516,98 @@ function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
           </div>
         )}
 
-        {/* Tool calls inline */}
+        {/* Tool calls — compact expandable cards */}
         {entry.toolCalls && entry.toolCalls.length > 0 && (
-          <div style={{ marginTop: SPACING.xs, display: "flex", flexWrap: "wrap", gap: SPACING.xs }}>
+          <div style={{ marginTop: SPACING.xs, display: "grid", gap: SPACING.xs }}>
             {entry.toolCalls.map((tc: ToolCallSummary, i: number) => (
-              <span
+              <div
                 key={i}
                 style={{
-                  padding: `1px ${SPACING.xs}px`,
-                  borderRadius: 3,
-                  background: SURFACE.panel,
+                  background: SURFACE.editor,
                   border: `1px solid ${BORDER.default}`,
-                  color: TEXT.secondary,
-                  fontSize: TYPO.smallFontSize,
+                  borderRadius: 4,
                 }}
               >
-                🔧 {tc.toolName}
-              </span>
+                <button
+                  type="button"
+                  onClick={() => setToolCallExpanded((prev) => prev === i ? null : i)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: SPACING.xs,
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    background: "transparent",
+                    border: "none",
+                    color: TEXT.secondary,
+                    cursor: "pointer",
+                    fontSize: TYPO.smallFontSize,
+                    fontWeight: 500,
+                    width: "100%",
+                    textAlign: "left",
+                  }}
+                >
+                  <span>🔧</span>
+                  <span>{tc.toolName}</span>
+                  <span style={{
+                    marginLeft: 4,
+                    fontSize: 10,
+                    padding: "0px 4px",
+                    borderRadius: 3,
+                    background: tc.status === "success" ? "rgba(52, 211, 153, 0.15)" : tc.status === "failed" ? "rgba(248, 113, 113, 0.15)" : "rgba(96, 165, 250, 0.15)",
+                    color: tc.status === "success" ? "#34d399" : tc.status === "failed" ? "#f87171" : "#60a5fa",
+                  }}>
+                    {tc.status === "pending_approval" ? "⏳ approval" : tc.status}
+                  </span>
+                  {tc.durationMs !== undefined ? (
+                    <span style={{ fontSize: 10, color: TEXT.muted }}>
+                      {tc.durationMs >= 1000 ? `${(tc.durationMs / 1000).toFixed(1)}s` : `${tc.durationMs}ms`}
+                    </span>
+                  ) : null}
+                  <span style={{ marginLeft: "auto", color: TEXT.muted, fontSize: 10 }}>
+                    {toolCallExpanded === i ? "▼" : "▶"}
+                  </span>
+                </button>
+                {toolCallExpanded === i ? (
+                  <div style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderTop: `1px solid ${BORDER.default}`, display: "grid", gap: 4 }}>
+                    <div>
+                      <span style={{ fontSize: 10, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>ID</span>
+                      <span style={{ fontSize: 11, color: TEXT.secondary, marginLeft: SPACING.xs, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                        {tc.toolCallId}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</span>
+                      <span style={{ fontSize: 11, color: TEXT.secondary, marginLeft: SPACING.xs, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                        {tc.toolName}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Status</span>
+                      <span style={{ fontSize: 11, color: tc.status === "success" ? "#34d399" : tc.status === "failed" ? "#f87171" : "#60a5fa", marginLeft: SPACING.xs }}>
+                        {tc.status}
+                      </span>
+                    </div>
+                    {tc.durationMs !== undefined ? (
+                      <div>
+                        <span style={{ fontSize: 10, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Duration</span>
+                        <span style={{ fontSize: 11, color: TEXT.secondary, marginLeft: SPACING.xs }}>
+                          {tc.durationMs >= 1000 ? `${(tc.durationMs / 1000).toFixed(1)}s` : `${tc.durationMs}ms`}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         )}
 
-        {/* Usage */}
+        {/* Usage — compact format */}
         {entry.usage && formatUsage(entry.usage) && (
-          <div style={{ color: TEXT.muted, fontSize: TYPO.smallFontSize, marginTop: SPACING.xs }}>
-            {formatUsage(entry.usage)}
+          <div style={{ color: TEXT.muted, fontSize: 11, marginTop: SPACING.xs, display: "flex", gap: SPACING.sm }}>
+            {entry.usage.inputTokens !== undefined ? <span>↑{entry.usage.inputTokens}</span> : null}
+            {entry.usage.outputTokens !== undefined ? <span>↓{entry.usage.outputTokens}</span> : null}
+            {entry.usage.totalTokens !== undefined ? <span>∑{entry.usage.totalTokens}</span> : null}
           </div>
         )}
       </div>
@@ -958,8 +1089,11 @@ function AssistantChat() {
 
   const handleNewSession = useCallback(() => {
     clearLoadedSession();
+    if (selectedFlowPath) {
+      useRuntimeStore.getState().clearRun(selectedFlowPath);
+    }
     setSessionPickerOpen(false);
-  }, [clearLoadedSession]);
+  }, [clearLoadedSession, selectedFlowPath]);
 
   const isRunning = latestRun?.state === "running";
   const isViewingHistory = loadedSessionId !== null;

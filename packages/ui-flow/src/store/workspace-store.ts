@@ -102,6 +102,8 @@ export interface WorkspaceActions {
   createFlowInWorkspace: (dirPath: string, fileName: string, platform: PlatformApi) => Promise<string>;
   /** Set the prompt asset manifest (called after scanning .agents-flow/) */
   setPromptAssetManifest: (manifest: PromptAssetManifest | null) => void;
+  /** Save a flow to disk via platform API and mark it as saved */
+  saveFlow: (flowPath: string, platform: PlatformApi) => Promise<void>;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;
@@ -561,6 +563,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setPromptAssetManifest: (manifest) => set({ promptAssetManifest: manifest }),
+
+  saveFlow: async (flowPath, platform) => {
+    const { documents } = get();
+    const doc = documents.get(flowPath);
+    if (!doc) return;
+
+    // Use platform.flow.save for flow files, or platform.workspace.createFile for others
+    if (doc.docType === "flow" && platform.flow?.save) {
+      await platform.flow.save(flowPath, doc.yamlSource);
+    } else {
+      await platform.workspace.createFile(flowPath, doc.yamlSource);
+    }
+
+    // Mark as saved after successful write
+    get().markSaved(flowPath);
+  },
 }));
 
 // ---------------------------------------------------------------------------
