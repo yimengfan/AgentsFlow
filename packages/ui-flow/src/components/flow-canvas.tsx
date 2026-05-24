@@ -74,6 +74,9 @@ interface AgentNodeData {
   nodeKind: string;
   nodeType?: string;
   spec?: NodeSpec;
+  agentRef?: string;
+  model?: string;
+  outputKind?: string;
   inputPorts: ReadonlyArray<{ portId: string; dataType: PortDataType; required?: boolean; label?: string }>;
   outputPorts: ReadonlyArray<{ portId: string; dataType: PortDataType; required?: boolean; label?: string }>;
 }
@@ -86,6 +89,11 @@ function SpecNode({ data, selected, id }: NodeProps) {
   const nodeId = id;
   const instanceInputPorts = d.inputPorts ?? [];
   const instanceOutputPorts = d.outputPorts ?? [];
+
+  // Resolve display name from agentRef (strip path prefix, show just the .agent.md name)
+  const agentDisplayName = d.agentRef
+    ? d.agentRef.split("/").pop()?.replace(/\.agent\.md$/, "") ?? d.agentRef
+    : d.label || effectiveKind;
 
   // Read runtime status for this node
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
@@ -246,11 +254,11 @@ function SpecNode({ data, selected, id }: NodeProps) {
           !
         </div>
       )}
-      {/* Header */}
+      {/* Header: kind (small) */}
       <div
         style={{
-          fontSize: TYPO.smallFontSize,
-          opacity: 0.8,
+          fontSize: TYPO.smallFontSize - 1,
+          opacity: 0.65,
           marginBottom: 2,
           whiteSpace: "nowrap",
           overflow: "hidden",
@@ -259,15 +267,51 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec?.kind ?? effectiveKind}
       </div>
+      {/* Agent name (slightly larger, prominent) */}
       <div
         style={{
+          fontSize: TYPO.fontSize + 2,
+          fontWeight: 600,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
       >
-        {d.label || effectiveKind}
+        {agentDisplayName}
       </div>
+      {/* Output type badge */}
+      {d.outputKind && d.outputKind !== "text" && (
+        <div
+          style={{
+            display: "inline-block",
+            marginTop: 3,
+            padding: "1px 6px",
+            borderRadius: 4,
+            fontSize: TYPO.smallFontSize - 1,
+            fontWeight: 500,
+            background: "rgba(255,255,255,0.18)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {d.outputKind}
+        </div>
+      )}
+      {/* Model name (small) */}
+      {d.model && (
+        <div
+          style={{
+            fontSize: TYPO.smallFontSize - 1,
+            opacity: 0.6,
+            marginTop: 2,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          }}
+        >
+          {d.model.includes("/") ? d.model.split("/").pop() : d.model}
+        </div>
+      )}
 
       {/* Input handles — flow ports */}
       {inputFlowPorts.map((p, i) => (
@@ -888,6 +932,9 @@ export function FlowCanvas({
           nodeKind: effectiveKind,
           nodeType: n.nodeType,
           spec,
+          agentRef: n.agentRef ?? undefined,
+          model: typeof (n.config as Record<string, unknown>)?.model === "string" ? (n.config as Record<string, unknown>).model as string : undefined,
+          outputKind: typeof (n.config as Record<string, unknown>)?.outputKind === "string" ? (n.config as Record<string, unknown>).outputKind as string : undefined,
           inputPorts: [...n.inputPorts],
           outputPorts: [...n.outputPorts],
         },

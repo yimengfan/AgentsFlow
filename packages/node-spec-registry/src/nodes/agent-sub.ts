@@ -27,6 +27,7 @@ export class AgentSubSpec extends NodeSpecBase {
   override readonly outputPorts = [
     { portId: "out", dataType: "flow" as PortDataType, required: true, label: "出" },
     { portId: "result", dataType: "string" as PortDataType, required: false, label: "结果" },
+    { portId: "plan", dataType: "plan" as PortDataType, required: false, label: "计划" },
   ] as const;
 
   override readonly params: ReadonlyArray<ParamDef> = [
@@ -43,15 +44,8 @@ export class AgentSubSpec extends NodeSpecBase {
       label: "模型",
       paramType: "select",
       required: false,
-      options: [
-        { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-        { value: "deepseek-v4", label: "DeepSeek V4" },
-        { value: "gpt-4o", label: "GPT-4o" },
-        { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-        { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-        { value: "qwen3-235b-a22b", label: "Qwen3 235B" },
-      ],
-      description: "使用的模型",
+      options: [],
+      description: "使用的模型（从设置中的 LLM 提供商动态加载）",
       group: "模型",
     },
     {
@@ -183,6 +177,25 @@ export class AgentSubSpec extends NodeSpecBase {
       description: "最大费用（美元）",
       validation: { min: 0 },
       group: "超时与预算",
+    },
+    {
+      paramId: "outputKind",
+      label: "输出类型",
+      paramType: "select",
+      required: false,
+      defaultValue: "text",
+      options: [
+        { value: "text", label: "文本" },
+        { value: "plan", label: "计划" },
+        { value: "score", label: "评分" },
+        { value: "code", label: "代码" },
+        { value: "judge", label: "判断" },
+        { value: "review", label: "审查" },
+        { value: "artifact", label: "产物" },
+        { value: "decision", label: "决策" },
+      ],
+      description: "Agent 输出类型",
+      group: "输出",
     },
   ];
 }

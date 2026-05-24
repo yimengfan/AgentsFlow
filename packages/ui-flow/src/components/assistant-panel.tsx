@@ -11,6 +11,7 @@ import {
 } from "../store/runtime-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useWorkspaceTreeStore } from "../store/workspace-tree-store.js";
+import { useSettingsStore, lookupContextWindow } from "../store/settings-store.js";
 import { SURFACE, BORDER, TEXT, SPACING, TYPO, ACCENT, BUTTON } from "./workbench-tokens.js";
 import { useButtonHover, usePrimaryButtonHover } from "./use-button-hover.js";
 
@@ -80,6 +81,14 @@ function formatPromptSources(promptSources: readonly PromptSourceRef[]): string 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 3) + "…";
+}
+
+/** Format a token count for display: e.g. 128000 → "128K", 1500 → "1.5K", 800 → "800" */
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1_000)}K`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
 }
 
 // ─── Inline collapsible disclosure ─────────────────────────
@@ -320,7 +329,7 @@ function NodeStep({ node }: { node: NodeDebugState }) {
 
 // ─── Chat message bubble ───────────────────────────────────
 
-function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
+function ChatMessage({ entry, modelKey }: { entry: RunTimelineEntry; modelKey?: string | undefined }) {
   const isSystem = entry.role === "system";
   const isStreaming = entry.status === "running" && entry.role === "assistant";
   // Use streamingText as the visible content when streaming, otherwise entry.content
@@ -329,6 +338,17 @@ function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
     : entry.content;
 
   const [toolCallExpanded, setToolCallExpanded] = useState<number | null>(null);
+
+  // Resolve context window from model key
+  const contextWindow = modelKey ? useSettingsStore.getState().getContextWindowForKey(modelKey) : undefined;
+  const inputTokens = entry.usage?.inputTokens;
+  const showContextBar = contextWindow !== undefined && inputTokens !== undefined && contextWindow > 0;
+
+  // Determine bar color based on usage percentage
+  const usagePercent = showContextBar ? (inputTokens! / contextWindow!) * 100 : 0;
+  const barColor = usagePercent > 90 ? ACCENT.errorRed
+    : usagePercent > 70 ? ACCENT.alertAmber
+    : ACCENT.runGreen;
 
   return (
     <div
@@ -604,10 +624,41 @@ function ChatMessage({ entry }: { entry: RunTimelineEntry }) {
 
         {/* Usage — compact format */}
         {entry.usage && formatUsage(entry.usage) && (
-          <div style={{ color: TEXT.muted, fontSize: 11, marginTop: SPACING.xs, display: "flex", gap: SPACING.sm }}>
+          <div style={{ color: TEXT.muted, fontSize: 11, marginTop: SPACING.xs, display: "flex", gap: SPACING.sm, alignItems: "center" }}>
             {entry.usage.inputTokens !== undefined ? <span>↑{entry.usage.inputTokens}</span> : null}
             {entry.usage.outputTokens !== undefined ? <span>↓{entry.usage.outputTokens}</span> : null}
             {entry.usage.totalTokens !== undefined ? <span>∑{entry.usage.totalTokens}</span> : null}
+            {/* Context window bar */}
+            {showContextBar && (
+              <>
+                <span style={{ color: TEXT.muted, fontSize: 10 }}>
+                  {formatTokenCount(inputTokens!)} / {formatTokenCount(contextWindow!)} ({usagePercent.toFixed(1)}%)
+                </span>
+                <div
+                  style={{
+                    width: 48,
+                    height: 4,
+                    borderRadius: 2,
+                    background: BORDER.default,
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: `${Math.min(usagePercent, 100)}%`,
+                      background: barColor,
+                      borderRadius: 2,
+                      transition: "width 200ms ease, background 200ms ease",
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1102,6 +1153,19 @@ function AssistantChat() {
   // Show loaded history timeline if viewing a historical session, else show live
   const messages = isViewingHistory ? loadedTimeline : (latestRun?.timeline ?? []);
 
+  // Build a nodeId → modelKey map from the current flow's node configs
+  const nodeModelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!doc?.flow) return map;
+    for (const node of doc.flow.graph.nodes) {
+      const config = node.config as Record<string, unknown> | undefined;
+      if (config && typeof config.model === "string" && config.model.length > 0) {
+        map.set(node.nodeId, config.model);
+      }
+    }
+    return map;
+  }, [doc?.flow]);
+
   return (
     <>
       {/* Flow selector + session management bar */}
@@ -1323,7 +1387,7 @@ function AssistantChat() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {messages.map((entry) => (
-              <ChatMessage key={entry.entryId} entry={entry} />
+              <ChatMessage key={entry.entryId} entry={entry} modelKey={entry.nodeId ? nodeModelMap.get(entry.nodeId) : undefined} />
             ))}
             <div ref={messagesEndRef} />
           </div>

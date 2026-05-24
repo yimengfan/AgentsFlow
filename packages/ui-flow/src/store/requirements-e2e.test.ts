@@ -37,7 +37,7 @@ import {
   useRuntimeStore,
   type PromptSourceRef,
 } from "./runtime-store.js";
-import { useSettingsStore } from "./settings-store.js";
+import { useSettingsStore, lookupContextWindow } from "./settings-store.js";
 import {
   registerRuntimeAdapterExtension,
   unregisterRuntimeAdapterExtension,
@@ -2223,15 +2223,13 @@ describe("需求13: Settings Store 全局设置", () => {
 // ════════════════════════════════════════════════════════════
 
 describe("需求14: Agent 配置参数完整性", () => {
-  it("AgentMainSpec model 参数使用 select 类型并提供 6 个选项", () => {
+  it("AgentMainSpec model 参数使用 select 类型，选项由 settings store 动态提供", () => {
     const spec = new AgentMainSpec();
     const modelParam = spec.params.find((p) => p.paramId === "model");
     expect(modelParam).not.toBeUndefined();
     expect(modelParam?.paramType).toBe("select");
-    expect(modelParam?.options).toHaveLength(6);
-    expect(modelParam?.options?.some((o) => o.value === "deepseek-v4-flash")).toBe(true);
-    expect(modelParam?.options?.some((o) => o.value === "gpt-4o")).toBe(true);
-    expect(modelParam?.options?.some((o) => o.value === "claude-sonnet-4-20250514")).toBe(true);
+    // Options are now populated dynamically from settings store, not hardcoded
+    expect(modelParam?.options).toHaveLength(0);
     expect(modelParam?.group).toBe("模型");
   });
 
@@ -2283,7 +2281,7 @@ describe("需求14: Agent 配置参数完整性", () => {
     expect(timeoutIds).toContain("maxCostUsd");
   });
 
-  it("AgentMainSpec 包含输出参数: outputKind", () => {
+  it("AgentMainSpec outputKind 参数包含扩展的输出类型", () => {
     const spec = new AgentMainSpec();
     const outputParams = spec.params.filter((p) => p.group === "输出");
     const outputIds = outputParams.map((p) => p.paramId);
@@ -2295,14 +2293,20 @@ describe("需求14: Agent 配置参数完整性", () => {
     expect(outputKindParam?.options?.some((o) => o.value === "text")).toBe(true);
     expect(outputKindParam?.options?.some((o) => o.value === "plan")).toBe(true);
     expect(outputKindParam?.options?.some((o) => o.value === "score")).toBe(true);
+    expect(outputKindParam?.options?.some((o) => o.value === "code")).toBe(true);
+    expect(outputKindParam?.options?.some((o) => o.value === "judge")).toBe(true);
+    expect(outputKindParam?.options?.some((o) => o.value === "review")).toBe(true);
+    expect(outputKindParam?.options?.some((o) => o.value === "artifact")).toBe(true);
+    expect(outputKindParam?.options?.some((o) => o.value === "decision")).toBe(true);
   });
 
-  it("AgentSubSpec model 参数同样使用 select 类型并提供 6 个选项", () => {
+  it("AgentSubSpec model 参数同样使用 select 类型，选项由 settings store 动态提供", () => {
     const spec = new AgentSubSpec();
     const modelParam = spec.params.find((p) => p.paramId === "model");
     expect(modelParam).not.toBeUndefined();
     expect(modelParam?.paramType).toBe("select");
-    expect(modelParam?.options).toHaveLength(6);
+    // Options are now populated dynamically from settings store, not hardcoded
+    expect(modelParam?.options).toHaveLength(0);
   });
 
   it("AgentSubSpec 包含工具策略参数: approvalRequirement, allowedCapabilities, blockedTools", () => {
@@ -2318,22 +2322,106 @@ describe("需求14: Agent 配置参数完整性", () => {
     expect(approvalParam?.group).toBe("工具策略");
   });
 
-  it("AgentSubSpec 不包含 outputKind 参数（与 Main Agent 区分）", () => {
+  it("AgentSubSpec 包含 outputKind 参数（与 Main Agent 一致）", () => {
     const spec = new AgentSubSpec();
     const paramIds = spec.params.map((p) => p.paramId);
-    expect(paramIds).not.toContain("outputKind");
+    expect(paramIds).toContain("outputKind");
   });
 
-  it("AgentMainSpec 和 AgentSubSpec 的模型选项列表一致", () => {
+  it("AgentMainSpec 和 AgentSubSpec 的模型参数选项均为空（动态填充）", () => {
     const mainSpec = new AgentMainSpec();
     const subSpec = new AgentSubSpec();
 
     const mainModelOptions = mainSpec.params.find((p) => p.paramId === "model")?.options;
     const subModelOptions = subSpec.params.find((p) => p.paramId === "model")?.options;
 
-    expect(mainModelOptions).toHaveLength(subModelOptions!.length);
-    for (const opt of mainModelOptions ?? []) {
-      expect(subModelOptions?.some((o) => o.value === opt.value && o.label === opt.label)).toBe(true);
+    // Both use empty options; the UI populates them dynamically from settings store
+    expect(mainModelOptions).toHaveLength(0);
+    expect(subModelOptions).toHaveLength(0);
+  });
+});
+
+// ── 需求15: 聊天消息上下文窗口大小预览 ──────────────────────
+
+describe("需求15: 聊天消息上下文窗口大小预览", () => {
+  afterEach(() => {
+    // Clean up settings store
+    const { providers } = useSettingsStore.getState();
+    for (const p of providers) {
+      useSettingsStore.getState().removeProvider(p.id);
     }
+  });
+
+  it("LlmModel 支持 contextWindow 可选字段", () => {
+    useSettingsStore.getState().addProvider({ tag: "test", baseUrl: "http://test" });
+    const providers = useSettingsStore.getState().providers;
+    const providerId = providers[0].id;
+
+    useSettingsStore.getState().setProviderModels(providerId, [
+      { id: "gpt-4o", label: "GPT-4o", providerId, contextWindow: 128_000 },
+      { id: "claude-sonnet", label: "Claude Sonnet", providerId },
+    ]);
+
+    const models = useSettingsStore.getState().getAllModels();
+    const gpt4o = models.find((m) => m.id === "gpt-4o");
+    const claude = models.find((m) => m.id === "claude-sonnet");
+
+    expect(gpt4o?.contextWindow).toBe(128_000);
+    expect(claude?.contextWindow).toBeUndefined();
+  });
+
+  it("lookupContextWindow 能识别常见模型", () => {
+    expect(lookupContextWindow("gpt-4o")).toBe(128_000);
+    expect(lookupContextWindow("claude-sonnet-4-20250514")).toBe(200_000);
+    expect(lookupContextWindow("deepseek-chat")).toBe(128_000);
+    expect(lookupContextWindow("unknown-model")).toBeUndefined();
+  });
+
+  it("getContextWindowForKey 解析 composite key 并返回上下文窗口大小", () => {
+    useSettingsStore.getState().addProvider({ tag: "openai", baseUrl: "http://openai" });
+    const providers = useSettingsStore.getState().providers;
+    const providerId = providers[0].id;
+
+    // Model with explicit contextWindow
+    useSettingsStore.getState().setProviderModels(providerId, [
+      { id: "gpt-4o", label: "GPT-4o", providerId, contextWindow: 128_000 },
+    ]);
+
+    // Composite key: "providerTag/modelId"
+    const result = useSettingsStore.getState().getContextWindowForKey("openai/gpt-4o");
+    expect(result).toBe(128_000);
+  });
+
+  it("getContextWindowForKey 对无显式 contextWindow 的模型回退到 lookupContextWindow", () => {
+    useSettingsStore.getState().addProvider({ tag: "anthropic", baseUrl: "http://anthropic" });
+    const providers = useSettingsStore.getState().providers;
+    const providerId = providers[0].id;
+
+    // Model without explicit contextWindow, but known pattern
+    useSettingsStore.getState().setProviderModels(providerId, [
+      { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId },
+    ]);
+
+    // Should fall back to lookupContextWindow
+    const result = useSettingsStore.getState().getContextWindowForKey("anthropic/claude-sonnet-4-20250514");
+    expect(result).toBe(200_000);
+  });
+
+  it("getContextWindowForKey 对未知模型返回 undefined", () => {
+    useSettingsStore.getState().addProvider({ tag: "custom", baseUrl: "http://custom" });
+    const providers = useSettingsStore.getState().providers;
+    const providerId = providers[0].id;
+
+    useSettingsStore.getState().setProviderModels(providerId, [
+      { id: "my-custom-model", label: "Custom", providerId },
+    ]);
+
+    const result = useSettingsStore.getState().getContextWindowForKey("custom/my-custom-model");
+    expect(result).toBeUndefined();
+  });
+
+  it("getContextWindowForKey 对无法解析的 key 返回 undefined", () => {
+    const result = useSettingsStore.getState().getContextWindowForKey("invalid-key-no-slash");
+    expect(result).toBeUndefined();
   });
 });

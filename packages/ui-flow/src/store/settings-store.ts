@@ -46,6 +46,8 @@ export interface LlmModel {
   readonly label: string;
   /** Back-reference to LlmProvider.id */
   readonly providerId: string;
+  /** Maximum context window in tokens (optional — used for context usage display) */
+  readonly contextWindow?: number;
 }
 
 // ─── Tool Policy ───────────────────────────────────────────
@@ -93,6 +95,8 @@ export interface SettingsActions {
   setDefaultModelKey: (key: string | null) => void;
   /** Get all models across all providers */
   getAllModels: () => readonly LlmModel[];
+  /** Get the context window size for a model by composite key "providerTag/modelId" */
+  getContextWindowForKey: (key: string) => number | undefined;
 
   // ── Tab ──
   /** Switch active settings sub-tab */
@@ -119,6 +123,57 @@ function hostnameFromUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+// ─── Context window defaults ───────────────────────────────
+
+/**
+ * Known context window sizes for common models.
+ * Used as fallback when a model doesn't have contextWindow set.
+ * Keys are model ID substrings (case-insensitive partial match).
+ */
+const KNOWN_CONTEXT_WINDOWS: ReadonlyArray<{ readonly pattern: string; readonly tokens: number }> = [
+  { pattern: "gpt-4o", tokens: 128_000 },
+  { pattern: "gpt-4-turbo", tokens: 128_000 },
+  { pattern: "gpt-4-", tokens: 8_192 },
+  { pattern: "gpt-3.5", tokens: 16_385 },
+  { pattern: "o1", tokens: 200_000 },
+  { pattern: "o3", tokens: 200_000 },
+  { pattern: "o4-mini", tokens: 200_000 },
+  { pattern: "claude-sonnet", tokens: 200_000 },
+  { pattern: "claude-haiku", tokens: 200_000 },
+  { pattern: "claude-opus", tokens: 200_000 },
+  { pattern: "claude-3.5", tokens: 200_000 },
+  { pattern: "claude-3-", tokens: 200_000 },
+  { pattern: "deepseek-v4", tokens: 128_000 },
+  { pattern: "deepseek-chat", tokens: 128_000 },
+  { pattern: "deepseek-r1", tokens: 128_000 },
+  { pattern: "deepseek-", tokens: 64_000 },
+  { pattern: "qwen3-", tokens: 128_000 },
+  { pattern: "qwen2.5-", tokens: 128_000 },
+  { pattern: "qwen-", tokens: 32_000 },
+  { pattern: "llama-3.1", tokens: 128_000 },
+  { pattern: "llama-3-", tokens: 8_192 },
+  { pattern: "llama-", tokens: 4_096 },
+  { pattern: "gemini-2.5", tokens: 1_000_000 },
+  { pattern: "gemini-2.0", tokens: 1_000_000 },
+  { pattern: "gemini-1.5", tokens: 1_000_000 },
+  { pattern: "gemini-", tokens: 32_000 },
+  { pattern: "mistral-large", tokens: 128_000 },
+  { pattern: "mistral-medium", tokens: 32_000 },
+  { pattern: "mistral-small", tokens: 32_000 },
+  { pattern: "codestral", tokens: 256_000 },
+];
+
+/** Look up the context window for a model by its ID, returning undefined if unknown */
+export function lookupContextWindow(modelId: string): number | undefined {
+  const lower = modelId.toLowerCase();
+  for (const entry of KNOWN_CONTEXT_WINDOWS) {
+    if (lower.includes(entry.pattern)) {
+      return entry.tokens;
+    }
+  }
+  return undefined;
 }
 
 // ─── Migration ─────────────────────────────────────────────
@@ -300,6 +355,22 @@ export const useSettingsStore = create<SettingsStore>()(
       getAllModels: () => {
         const state = get();
         return state.providers.flatMap((p) => p.models);
+      },
+
+      /** Get the context window size for a model identified by composite key "providerTag/modelId" */
+      getContextWindowForKey: (key: string): number | undefined => {
+        const state = get();
+        // Parse composite key: "providerTag/modelId"
+        const slashIdx = key.indexOf("/");
+        if (slashIdx === -1) return lookupContextWindow(key);
+        const providerTag = key.slice(0, slashIdx);
+        const modelId = key.slice(slashIdx + 1);
+        const provider = state.providers.find((p) => p.tag === providerTag);
+        if (!provider) return lookupContextWindow(modelId);
+        const model = provider.models.find((m) => m.id === modelId);
+        if (!model) return lookupContextWindow(modelId);
+        // Use explicit contextWindow if set, otherwise fall back to known defaults
+        return model.contextWindow ?? lookupContextWindow(modelId);
       },
 
       // ── Tab ──

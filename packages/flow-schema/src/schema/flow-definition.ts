@@ -68,7 +68,7 @@ export const AgentDefSchema = z.object({
   /** Adapter-specific configuration */
   adapterConfig: z.record(z.unknown()).optional(),
   /** Built-in output kind — determines which output port the runtime publishes to */
-  outputKind: z.enum(["text", "plan", "score"]).optional(),
+  outputKind: z.enum(["text", "plan", "score", "code", "judge", "review", "artifact", "decision"]).optional(),
 });
 
 export type AgentDef = z.infer<typeof AgentDefSchema>;

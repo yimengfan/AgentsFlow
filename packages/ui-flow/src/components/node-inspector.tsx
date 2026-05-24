@@ -4,6 +4,7 @@ import type { DataTrace, ErrorTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition, NodeDef, ParamDef, PromptAssetManifest, PromptSegment, ProviderPromptPackage } from "@agentsflow/flow-schema";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useRuntimeStore, type PromptSourceRef } from "../store/runtime-store.js";
+import { useSettingsStore } from "../store/settings-store.js";
 import { BORDER, SPACING, SURFACE, TEXT, TYPO } from "./workbench-tokens.js";
 import { getAgentDropdownItems, assemblePromptPackage } from "@agentsflow/prompt-asset-resolver";
 
@@ -663,6 +664,75 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
             </section>
           )}
 
+          {/* Agent Configuration — model + outputKind for agent nodes */}
+          {isAgentNode && (() => {
+            const allModels = useSettingsStore.getState().getAllModels();
+            const allProviders = useSettingsStore.getState().providers;
+            const nodeConfig = selectedNode.config as Record<string, unknown> | undefined;
+            const currentModel = typeof nodeConfig?.model === "string" ? nodeConfig.model : "";
+            const currentOutputKind = typeof nodeConfig?.outputKind === "string" ? nodeConfig.outputKind : "text";
+            const outputKindOptions = [
+              { value: "text", label: "文本" },
+              { value: "plan", label: "计划" },
+              { value: "score", label: "评分" },
+              { value: "code", label: "代码" },
+              { value: "judge", label: "判断" },
+              { value: "review", label: "审查" },
+              { value: "artifact", label: "产物" },
+              { value: "decision", label: "决策" },
+            ];
+            const selectStyle: CSSProperties = {
+              width: "100%",
+              boxSizing: "border-box",
+              background: SURFACE.editor,
+              color: TEXT.primary,
+              border: `1px solid ${BORDER.default}`,
+              borderRadius: 6,
+              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+              fontSize: TYPO.fontSize,
+            };
+            // Build model key = "providerTag/modelId" for each model
+            const modelOptions = allModels.map((m) => {
+              const provider = allProviders.find((p) => p.id === m.providerId);
+              const key = provider ? `${provider.tag}/${m.id}` : m.id;
+              return { key, label: m.label };
+            });
+            return (
+              <section style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Configuration
+                </div>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>模型</span>
+                  <select
+                    value={currentModel}
+                    onChange={(event) => updateNodeConfig(flowPath, selectedNode.nodeId, "model", event.currentTarget.value)}
+                    style={selectStyle}
+                  >
+                    <option value="">(default)</option>
+                    {modelOptions.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>输出类型</span>
+                  <select
+                    value={currentOutputKind}
+                    onChange={(event) => updateNodeConfig(flowPath, selectedNode.nodeId, "outputKind", event.currentTarget.value)}
+                    style={selectStyle}
+                  >
+                    {outputKindOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+            );
+          })()}
+
           {/* Prompt file list + assembled preview from logic layer */}
           {isAgentNode && agentPromptPackage && (
             <section style={{ display: "grid", gap: 8 }}>
@@ -801,58 +871,6 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
               </div>
             </section>
           )}
-
-          <section style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
-              Ports
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {selectedNode.inputPorts.map((port) => (
-                <div key={`in:${port.portId}`} style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
-                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>⬅ {port.label ?? port.portId} <span style={{ color: TEXT.muted }}>· {port.dataType}</span></div>
-                  {/* Show inline port value only when no trace data available */}
-                  {!(selectedNodeState && selectedNodeState.inputTraces.length > 0) && selectedNodeState?.inputs[port.portId] !== undefined ? (
-                    <div style={{ marginTop: 2, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: TEXT.muted, whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                      {formatValue(selectedNodeState.inputs[port.portId])}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {selectedNode.outputPorts.map((port) => (
-                <div key={`out:${port.portId}`} style={{ padding: `${SPACING.xs}px ${SPACING.sm}px`, borderRadius: 6, background: SURFACE.editor, border: `1px solid ${BORDER.default}` }}>
-                  <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>➡ {port.label ?? port.portId} <span style={{ color: TEXT.muted }}>· {port.dataType}</span></div>
-                  {/* Show inline port value only when no trace data available */}
-                  {!(selectedNodeState && selectedNodeState.outputTraces.length > 0) && selectedNodeState?.portOutputs[port.portId] !== undefined ? (
-                    <div style={{ marginTop: 2, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: TEXT.muted, whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                      {formatValue(selectedNodeState.portOutputs[port.portId])}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
-              Parameters
-            </div>
-            <div style={{ display: "grid", gap: SPACING.sm }}>
-              {selectedNode.params.length > 0 ? selectedNode.params.map((param) => renderParamField(selectedNode, param, flowPath, updateNodeConfig)) : (
-                <div style={{ color: TEXT.muted, fontSize: TYPO.smallFontSize }}>该节点没有可编辑参数。</div>
-              )}
-            </div>
-          </section>
-
-          <section style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
-              Prompt Sources
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {selectedNodeState?.promptSources.length ? selectedNodeState.promptSources.map((source) => renderPromptSource(source, onRevealYaml)) : (
-                <div style={{ color: TEXT.muted, fontSize: TYPO.smallFontSize }}>当前没有可用的提示词源。</div>
-              )}
-            </div>
-          </section>
 
           <section style={{ display: "grid", gap: 8 }}>
             <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
