@@ -94,6 +94,8 @@ function workspaceApiPlugin(): Plugin {
               req.on("end", () => { resolve(data); });
             });
             const { filePath, content } = JSON.parse(body) as { filePath: string; content: string };
+            // Ensure parent directories exist before writing
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
             await fs.writeFile(filePath, content, "utf-8");
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ ok: true }));

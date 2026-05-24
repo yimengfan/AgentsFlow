@@ -287,6 +287,9 @@ function registerIpcHandlers(
 
   ipcMain.handle("workspace:createFile", async (_e: IpcMainInvokeEvent, filePath: string, content: string) => {
     const fs = await import("node:fs/promises");
+    const nodePath = await import("node:path");
+    // Ensure parent directories exist before writing
+    await fs.mkdir(nodePath.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, content, "utf-8");
     return true;
   });

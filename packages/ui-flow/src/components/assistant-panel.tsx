@@ -809,10 +809,12 @@ function useSessionHistory(flowPath: string | null) {
 
   // Refresh session list when flowPath changes
   useEffect(() => {
+    // Always reset history state when the flow changes
+    setLoadedTimeline([]);
+    setLoadedSessionId(null);
+
     if (!flowPath || !rootPath) {
       setSessions([]);
-      setLoadedTimeline([]);
-      setLoadedSessionId(null);
       return;
     }
 
@@ -1341,6 +1343,9 @@ function AssistantChat() {
           value={userPrompt}
           onChange={(event) => setUserPrompt(event.currentTarget.value)}
           onKeyDown={(event) => {
+            // Ignore Enter during IME composition (e.g. CJK input methods)
+            // nativeEvent.isComposing covers the keydown phase reliably.
+            if (event.nativeEvent.isComposing) return;
             if (event.key === "Enter" && !event.shiftKey && !isRunning && userPrompt.trim().length > 0) {
               event.preventDefault();
               handleSend();
