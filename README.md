@@ -150,12 +150,14 @@ Start with [docs/README.md](./docs/README.md) for the document index and ownersh
 | Need | Document |
 | ---- | -------- |
 | Project overview and setup | [README.md](./README.md) |
-| Product PRD and delivery governance | [docs/prd/README.md](./docs/prd/README.md) |
+| Product PRD, analysis method, and defect governance | [docs/prd/README.md](./docs/prd/README.md) |
 | Contributor workflow | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | Maintainer and operational topics | [MAINTENANCE.md](./MAINTENANCE.md) |
 | Architecture decisions | [docs/adr/](./docs/adr) |
 | Executable contracts | [docs/specs/](./docs/specs) |
 | AI contributor rules | [.github/copilot-instructions.md](./.github/copilot-instructions.md) |
+
+For product defect analysis, feature evolution, or documentation maintenance work, start in [docs/prd/README.md](./docs/prd/README.md) and continue to the methodology and defect registry before changing PRD scope.
 
 ## Flow Area Specification
 

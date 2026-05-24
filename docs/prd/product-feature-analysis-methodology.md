@@ -1,212 +1,291 @@
-# 产品功能缺陷扫描方法论
+# 产品/功能分析与维护方法论
 
-> 本文档定义 AgentsFlow 产品功能缺陷的核心扫描机制，作为 PRD 的核心补充。
-> 扫描结果直接驱动 PRD §8 "当前关键缺口" 和 E2E 测试规格的更新。
+> 本文档定义 AgentsFlow 的产品分析、缺陷维护、功能进化与文档防失效机制。
+> 它是稳定的方法论文档，不直接承担“当前活跃缺陷列表”的职责；动态结论统一维护在 `docs/prd/defect-registry.md`。
 
 ## 1. 文档定位
 
-- **定位**: PRD 的核心扫描机制，不是架构说明书或测试计划
-- **目标**: 建立系统化的缺陷发现、分级和追踪框架，防止功能退化
-- **更新规则**: 每次功能迭代后必须重新执行扫描，更新 §8 和测试规格
+- **定位**: PRD 层的稳定分析方法，不是架构说明书、实现清单或一次性的扫描报告。
+- **目标**: 让产品分析任务有统一输入、统一输出、统一维护策略，避免“修了一次、文档就再次失效”。
+- **职责边界**:
+  - 本文档回答“不同类型的产品分析任务该怎么做”。
+  - `docs/prd/defect-registry.md` 负责记录“当前有哪些活跃缺陷、状态是什么”。
+  - `docs/prd/agentsflow-prd.md` 只保留当前阶段活跃的 P0/P1 摘要和 roadmap 结果。
 
-## 2. 三维扫描框架
+## 2. 使用时机与任务分型
 
-产品功能缺陷扫描从三个维度交叉检查，确保覆盖"契约定义了但 UI 没暴露"、"交互不完整"、"跨模块不一致"三类问题。
+| 任务类型 | 典型触发 | 核心问题 | 必须产出 | 必须联动文档 |
+| --- | --- | --- | --- | --- |
+| 缺陷识别任务 | 复扫已有功能、上线前检查、收到模糊“功能失效/没闭环”反馈 | 哪些能力存在断口、伪闭环或语义漂移 | 缺陷条目、等级、根因层、验证锚点 | 本文档、`defect-registry.md`、PRD §8 |
+| 缺陷执行任务 | 已有缺陷进入修复 | 这个缺陷如何被关闭、如何防回归 | 修复方案、验证方案、状态流转 | `defect-registry.md`、`docs/testing-supplementation.md`、相关 PRD/Spec |
+| 功能进化任务 | 用户想深度优化已有功能，而不是平行扩展 | 该做闭环增强、语义强化还是真的新增能力 | 进化 brief、范围边界、验收口径、演进计划 | 本文档、PRD、相关 ADR/Spec |
+| 文档维护任务 | 代码交付完成、PRD 状态变化、流程或命令变化 | 哪些文档必须回填，如何避免失效 | 文档更新清单、路由入口、失效说明 | `docs/README.md`、`prd-management.md`、`.github/copilot-instructions.md` |
 
-### 维度 1: Contract→UI Gap（契约到 UI 的差距）
+## 3. 通用原则
 
-**定义**: Schema / Contract / Spec 中定义了能力，但 UI 层未暴露或未正确连接。
+### 3.1 证据先于判断
 
-**扫描方法**:
-1. 遍历 `AgentDefSchema` 的所有字段
-2. 遍历 `NodeSpec.params` 中定义的参数
-3. 遍历 `PlatformApi` 的所有方法
-4. 对每个字段/参数/方法，检查 UI 组件是否渲染了对应控件
-5. 检查控件值变更是否正确回写到 store
+- 任何产品结论都必须至少有一个**代码锚点**和一个**验证锚点**。
+- 没有锚点的观察，只能作为待验证假设，不能直接写入活跃缺陷台账。
 
-**检查清单**:
+### 3.2 优先补闭环，而不是平行扩展
 
-| 契约来源 | 检查目标 | UI 锚点 |
-|----------|----------|---------|
-| `AgentDefSchema.modelProfile` | model, systemPrompt, temperature, maxTokens | NodeInspector `renderParamField` |
-| `AgentDefSchema.toolPolicy` | allowedCapabilities, blockedTools, approvalRequirement | NodeInspector params |
-| `AgentDefSchema.memoryPolicy` | visibleScopes, writableScopes, maxItems, maxBytes | NodeInspector params |
-| `AgentDefSchema.subagentPolicy` | allowedAgents, switchModes, returnStrategy, maxDelegations | NodeInspector params |
-| `AgentDefSchema.timeouts` | turnMs, sessionMs | NodeInspector params |
-| `AgentDefSchema.budgets` | maxTokens, maxCostUsd, maxSteps, maxWallClockMs | NodeInspector params |
-| `AgentDefSchema.outputKind` | "text"\|"plan"\|"score" | NodeInspector params |
-| `PlatformApi.workspace.createFile` | 文件保存 | Workbench save button / Cmd+S |
-| `WorkbenchStore.LeftViewId` | "settings" view | ActivityBar + renderLeftSidebarContent |
+- 已有用户旅程存在断点、伪闭环、状态丢失或平台偏差时，优先做深度优化。
+- 只有当问题无法通过增强现有旅程解决，才升级为范围扩展或新功能提案。
 
-### 维度 2: Interaction Loop Completeness（交互闭环完整性）
+### 3.3 方法论与结果分离
 
-**定义**: 用户可发起的操作是否形成了完整的闭环——触发→状态变更→UI 反馈→可继续操作。
+- 方法论文档负责稳定规则。
+- 缺陷台账负责动态结果。
+- 总 PRD 负责业务优先级和阶段承诺。
 
-**扫描方法**:
-1. 列出所有用户可触发的操作（按钮、快捷键、拖拽、选择）
-2. 对每个操作，追踪: 触发 → store 变更 → UI 重渲染 → 后续可用操作
-3. 检查是否有"死胡同"操作（触发后无法回到正常状态）
+### 3.4 同步更新优于事后补文档
 
-**检查清单**:
+- 代码完成后同步更新文档，是门禁，不是善后工作。
+- 如果任务结束时文档没有变化，必须在交付说明里明确说明“为什么无需更新”。
 
-| 操作 | 触发点 | Store 变更 | UI 反馈 | 闭环? |
-|------|--------|-----------|---------|-------|
-| 新建会话 (+) | assistant-panel | clearLoadedSession | timeline 清空 | ❌ 未 clearRun |
-| 发送消息 | textarea Enter | startFlow | timeline 流式更新 | ✅ |
-| 选择 Flow | FlowSelector | setActiveFlow | canvas 更新 | ✅ |
-| 选择历史会话 | session picker | loadSession | timeline 加载 | ✅ |
-| 回到实时 | "Back to live" | clearLoadedSession | timeline 恢复 | ✅ |
-| 保存 Flow | Cmd+S / 按钮 | saveFlow + markSaved | dirty 标记清除 | ❌ 无 saveFlow |
-| 打开设置 | ActivityBar 齿轮 | setActiveLeftView("settings") | settings 面板 | ❌ 无 settings view |
-| 修改节点配置 | Inspector | updateNodeConfig | canvas + YAML | ✅ |
-| 切换面板 | ActivityBar | toggleLeftSidebar | 面板展开/收起 | ✅ |
+## 4. 通用维护策略
 
-### 维度 3: Cross-module Consistency（跨模块一致性）
+### 4.1 编码完成后的文档更新门禁
 
-**定义**: 同一概念在不同模块间的表示和行为是否一致。
+以下变化发生后，必须在同一任务内完成文档回填，不接受“代码先合、文档以后补”：
 
-**扫描方法**:
-1. 列出核心概念（flow, session, node, agent, prompt）
-2. 对每个概念，检查在 store、schema、UI、platform 四层的表示是否一致
-3. 检查跨层传递时是否有信息丢失或语义偏移
+- 用户可见行为变化
+- 运行时绑定、Prompt 装配、平台接口或执行语义变化
+- PRD 范围、当前关键缺口、roadmap 优先级变化
+- 测试门禁、验证命令、缺陷状态或修复路径变化
 
-**检查清单**:
+建议的回填顺序：
 
-| 概念 | Schema 层 | Store 层 | UI 层 | Platform 层 | 一致? |
-|------|-----------|---------|-------|-------------|-------|
-| Flow 脏标记 | FlowDefinition (无) | DocumentState.isDirty | 无 save 按钮 | workspace.createFile | ❌ 缺保存闭环 |
-| Session | LocalRunRecord | runsByFlowPath | assistant-panel timeline | 无持久化 API | ⚠️ 仅内存 |
-| Node config | NodeDef.config | updateNodeConfig | Inspector fields | 无 | ✅ |
-| Agent binding | NodeDef.agentId/agentRef | updateNodeAgentRef | Inspector dropdown | prompt-asset-resolver | ✅ |
-| Model | AgentDefSchema.modelProfile.model | 无全局默认 | Inspector string input | 无 | ❌ 无选择器 |
-| Tool policy | AgentDefSchema.toolPolicy | 无 | 无 UI | 无 | ❌ 未暴露 |
+1. 先更新直接失效的文档（PRD、Spec、维护规范、测试规范）
+2. 再更新缺陷台账或进化计划
+3. 最后补文档地图和 instruction 路由
 
-## 3. 缺陷分级标准
+### 4.2 缺陷列表任务的维护策略
 
-### P0 — 功能失效（用户核心路径阻断）
+- 活跃缺陷统一维护在 `docs/prd/defect-registry.md`。
+- 每个缺陷必须记录：触发条件、预期结果、实际结果、根因层、等级、状态、代码锚点、验证锚点、下一步。
+- 缺陷状态变化必须和验证结果绑定，不允许只改状态不补证据。
+- 已解决缺陷不应从历史中消失，而应保留简短 closure 记录，避免“重复发现同一个问题”。
 
-- **定义**: 用户核心路径上的功能完全不可用或产生错误结果
-- **修复时限**: 当前迭代必须修复
-- **验证要求**: 必须有 E2E 测试覆盖
+### 4.3 文档失效判定规则
 
-### P1 — 功能缺失（用户可发现但可绕行）
+文档被视为已失效，当且仅当出现以下任一情况：
 
-- **定义**: 功能入口存在但行为不完整，或契约定义了但 UI 未暴露
-- **修复时限**: 近 1-2 个版本
-- **验证要求**: 必须有集成测试覆盖
+- 文档描述的行为与当前实现不一致
+- 文档给出的命令、入口或链路已失效
+- 文档还在陈述已修复或已移除的缺陷为“当前状态”
+- 新增文档没有进入 `docs/README.md`、`docs/prd/README.md`、`README.md` 或 `.github/copilot-instructions.md` 的读取入口
 
-### P2 — 体验缺陷（不影响功能正确性）
+### 4.4 复扫触发点
 
-- **定义**: UI 反馈不及时、交互不顺畅、信息展示不充分
-- **修复时限**: 中期 roadmap
-- **验证要求**: 建议有单元测试覆盖
+- 每次完成一个用户可见功能或缺陷修复之后
+- PRD 中某个 KR 状态变化之后
+- Web / Desktop / 平台边界改动之后
+- 发布前或里程碑收口前
+- 出现重复回归或同类缺陷聚集时
 
-## 4. 扫描结果（2025-01 最新）
+## 5. 基础分析骨架
 
-### Domain A: 会话管理
+### 5.1 保留三维主框架
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| A1 | 新建会话不清除运行状态 | 交互闭环 | **P0** | `handleNewSession` 只调 `clearLoadedSession()`，未调 `clearRun()` |
-| A2 | 会话仅内存存储，无持久化 API | 跨模块一致性 | P1 | `useSessionPersistence` 依赖 `platform.workspace.createFile` 但无 load API |
-| A3 | 历史会话列表无分页 | 体验缺陷 | P2 | sessions 数组全量加载 |
+所有产品分析任务默认仍从以下三类问题切入：
 
-### Domain B: Agent 配置
+1. **Contract→UI Gap**：契约定义了能力，但 UI 不可见或不可正确编辑。
+2. **Interaction Loop Completeness**：用户触发操作后，是否形成了真正闭环。
+3. **Cross-module Consistency**：同一概念在 schema、store、UI、platform、runtime 间是否一致。
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| B1 | 模型选择为纯文本输入，无下拉选择 | Contract→UI Gap | **P0** | `paramType: "string"` 而非 `"select"` |
-| B2 | 无 turnMode 参数 | Contract→UI Gap | P1 | NodeSpec 未定义 turnMode param |
-| B3 | 无 toolPolicy 配置 UI | Contract→UI Gap | **P0** | Schema 定义了但 NodeSpec 未暴露 |
-| B4 | 无 memoryPolicy 配置 UI | Contract→UI Gap | P1 | Schema 定义了但 NodeSpec 未暴露 |
-| B5 | 无 budgets/timeouts 配置 UI | Contract→UI Gap | P1 | Schema 定义了但 NodeSpec 未暴露 |
-| B6 | 无 outputKind 选择 | Contract→UI Gap | P1 | Schema 定义了但 NodeSpec 未暴露 |
+### 5.2 增加执行层五项闭环检查
 
-### Domain C: Flow 操作
+为了抓出“看起来有功能、实际上失效”的问题，所有扫描任务还必须做以下五项检查：
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| C1 | 无 Flow 保存功能 | 交互闭环 | **P0** | workspace-store 无 `saveFlow` action |
-| C2 | 无 Cmd+S 快捷键 | 交互闭环 | P1 | Workbench 无 keydown handler |
-| C3 | dirty 标记无 UI 指示 | 跨模块一致性 | P1 | Tab 无 dirty indicator |
+| 检查项 | 要回答的问题 | 常见失效表现 |
+| --- | --- | --- |
+| 入口与可发现性 | 用户能否合理找到并进入这条能力路径 | 功能存在但入口隐蔽、入口存在但点进去是占位页 |
+| 状态变更与反馈 | 触发后是否真的改变状态，并给出反馈 | 按钮可点但无状态变化、dirty/loaded/running 状态不一致 |
+| 持久化与恢复 | 刷新、切换、重开后能否恢复关键状态 | 仅内存保存、首次运行能用再次进入就丢失 |
+| 可观测性与可解释性 | 出错或异常时用户能否知道为什么 | 有错误状态但无来源、无上下文、无定位链路 |
+| 跨层与跨平台一致性 | Web/Desktop、本地/运行时、配置/执行是否一致 | 一端可用、一端失效；UI 枚举和 runtime 枚举不一致 |
 
-### Domain D: Inspector 展示
+### 5.3 缺陷分类补充
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| D1 | 选中 edge 时 I/O 数据展示不完整 | 交互闭环 | P1 | Inspector 仅显示 edge ID，未显示 port data |
-| D2 | 无 adapterKind 选择 | Contract→UI Gap | P1 | 运行时绑定路径关键字段未暴露 |
+除严重度外，每个条目还应标记缺陷类型，避免所有问题都被扁平化成“缺失功能”：
 
-### Domain E: Prompt 资产
+| 类型 | 定义 | 常见示例 |
+| --- | --- | --- |
+| 闭环断裂 | 主路径直接中断 | 保存、运行、加载、切换无法完成 |
+| 伪闭环 | 功能入口存在，但关键一步实际上失效 | 面板存在但不落地、历史看得到但无法恢复 |
+| 语义漂移 | schema / spec / UI / runtime 使用不同语义 | enum 取值不一致、字段名一致但含义不同 |
+| 平台偏差 | 同一能力在 Web/Desktop 表现不同 | Web 可用但 Desktop 不可用，或反之 |
+| 体验债 | 不影响正确性，但显著拉高理解或操作成本 | 弱反馈、弱可视化、入口过深 |
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| E1 | `.agents-flow` 在 Explorer 默认折叠 | 体验缺陷 | P2 | isHidden=true 但无展开引导 |
-| E2 | 资产引用关系无可视化 | 体验缺陷 | P2 | 中期 roadmap 项 |
+## 6. 方法论 A：缺陷识别任务
 
-### Domain F: 全局设置
+### 6.1 目标
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| F1 | 无全局设置面板 | Contract→UI Gap | **P0** | LeftViewId 无 "settings"，无 settings store |
-| F2 | 无全局模型/transport 默认配置 | 跨模块一致性 | **P0** | 每次创建 flow 都需重新配置 |
+- 从现有能力中识别真实断口，而不是把所有“还想做的东西”都当作缺陷。
+- 产出的是**可执行缺陷条目**，不是零散抱怨列表。
 
-### Domain G: 平台一致性
+### 6.2 执行步骤
 
-| ID | 缺陷 | 维度 | 等级 | 根因 |
-|----|------|------|------|------|
-| G1 | Web mode 无真实后端 | 跨模块一致性 | P1 | dev:web 使用 mock API |
-| G2 | Desktop IPC 链路未完整验证 | 跨模块一致性 | P1 | 缺 Desktop smoke E2E |
+1. 先确定扫描范围：按用户旅程或功能域切，而不是按代码目录切。
+2. 列出当前旅程的最小主路径：入口 -> 配置 -> 执行 -> 反馈 -> 持久化/恢复。
+3. 用三维主框架检查契约缺口、闭环断口和跨层不一致。
+4. 对每条候选问题再做五项闭环检查，确认是不是伪闭环或平台偏差。
+5. 仅在需要校准“成熟闭环长什么样”时，再参考竞品，不以竞品的功能广度直接生成需求。
+6. 给出严重度、缺陷类型、根因层和修复类别。
+7. 将已验证的问题写入 `defect-registry.md`，将 P0/P1 摘要同步进 PRD。
 
-## 5. 扫描执行流程
+### 6.3 输出要求
 
+每条缺陷至少包含：
+
+- 触发条件
+- 预期结果
+- 实际结果
+- 缺陷类型
+- 严重度（P0/P1/P2）
+- 根因层（PRD / UI / store / runtime / platform / test / docs）
+- 代码锚点
+- 验证锚点
+- 推荐修复类别（闭环补齐 / 契约对齐 / 体验增强 / 路由清理）
+
+## 7. 方法论 B：缺陷执行任务
+
+### 7.1 目标
+
+- 按缺陷台账执行修复，而不是边修边丢失上下文。
+- 修复的完成标准不是“代码改了”，而是“台账状态、验证、文档都闭环了”。
+
+### 7.2 执行规则
+
+1. 从台账选择一个明确条目作为修复单位，不混修多个无关缺陷。
+2. 先复现当前行为并确认缺陷仍然存在，避免继续修已过时问题。
+3. 优先修根因层；不能用下游补丁掩盖契约或平台层问题。
+4. 修复后必须补上对应验证锚点：测试、typecheck、smoke 或人工检查记录。
+5. 将状态从 `Planned/In Fix` 更新到 `Validated/Resolved`，并写明验证方式。
+6. 如果修复影响范围或用户可见行为变化，必须同步更新 PRD、测试规范和路由文档。
+
+### 7.3 缺陷状态流转
+
+- `Discovered`：已发现，有代码锚点，但尚未正式分配。
+- `Triaged`：已确认等级、根因层和优先级。
+- `Planned`：进入计划，有明确修复类别和下一步。
+- `In Fix`：已有执行中修改。
+- `Validated`：修复完成且验证通过，待关闭记录。
+- `Resolved`：已完成关闭并同步文档。
+- `Archived`：不再活跃，但保留历史记录。
+
+## 8. 方法论 C：功能进化任务
+
+### 8.1 定义
+
+功能进化任务指的是：**在不引入新主心智模型的前提下，增强现有能力的闭环、语义强度、可观测性或可维护性**。
+
+它不是：
+
+- 平行扩展一套新产品面
+- 仅因为竞品有某项能力就复制一份
+- 把临时体验想法直接上升为 roadmap
+
+### 8.2 先做四个判断
+
+1. 当前用户旅程是否已经存在，只是执行质量不够？
+2. 本次工作是否在提升闭环质量，而不是新增新的主入口？
+3. 用户价值是否可以直接表述为“更稳定、更可恢复、更可解释、更少手工配置”？
+4. 若不做这项进化，现有旅程是否会持续制造缺陷或高摩擦？
+
+只要上述问题有两个以上回答为“否”，就应该把任务升级成 PRD 范围变更，而不是功能进化。
+
+### 8.3 执行步骤
+
+1. 写清当前基线：已有入口、已有状态、已有断口、已有 workaround。
+2. 标出真正的瓶颈位置：配置保真度、持久化、可解释性、平台一致性、恢复能力等。
+3. 参考竞品时只抽取**成熟闭环模式**，不照搬功能面。
+4. 输出“进化 brief”：问题、目标、非目标、影响范围、验证方式、文档联动。
+5. 若进化会改变 PRD 当前关键缺口或 roadmap 优先级，必须同步 PRD。
+
+### 8.4 推荐输出模板
+
+```md
+### 功能进化 Brief
+
+- 当前能力:
+- 当前断口 / 高摩擦点:
+- 目标状态:
+- 非目标:
+- 影响范围:
+- 代码锚点:
+- 验证锚点:
+- 需同步文档:
 ```
-┌─────────────────────────────────────────────────┐
-│ 1. Contract 扫描                                │
-│    遍历 Schema 所有字段 → 检查 UI 是否暴露      │
-├─────────────────────────────────────────────────┤
-│ 2. Interaction 扫描                             │
-│    列出所有用户操作 → 追踪闭环 → 标记断裂点     │
-├─────────────────────────────────────────────────┤
-│ 3. Consistency 扫描                             │
-│    核心概念 × 四层表示 → 标记不一致             │
-├─────────────────────────────────────────────────┤
-│ 4. 分级 & 归档                                  │
-│    P0/P1/P2 分级 → 更新 PRD §8 → 补 E2E 测试   │
-├─────────────────────────────────────────────────┤
-│ 5. 验证                                         │
-│    pnpm typecheck + build + test → 确认无回归   │
-└─────────────────────────────────────────────────┘
+
+## 9. 方法论 D：文档维护任务
+
+### 9.1 适用范围
+
+- “整理文档”
+- “补方法论 / 补治理”
+- “防止文档失效”
+- “让 instruction 能识别这些文档”
+
+### 9.2 执行顺序
+
+1. 先确认稳定规则与动态结果是否被混写。
+2. 把稳定规则收敛到方法论或管理规范里。
+3. 把动态结果收敛到缺陷台账或 roadmap 摘要里。
+4. 更新 `docs/README.md`、`docs/prd/README.md`、`README.md` 和 `.github/copilot-instructions.md` 的路由入口。
+5. 检查新文档是否能够被新人和 agent 通过现有入口发现。
+
+### 9.3 完成标准
+
+- 新文档进入了文档地图和 PRD 层入口
+- AI instruction 路由已经显式包含这些文档
+- 总 PRD 不再直接承担动态缺陷台账职责
+- 文档之间的分层边界清晰，没有重复维护同一份结论
+
+## 10. 与 PRD / 测试 / 路线图的联动规则
+
+- `defect-registry.md` 是活跃缺陷的源数据。
+- `agentsflow-prd.md` §8 只汇总活跃的 P0/P1 与当前阶段关键缺口，不复制完整缺陷台账。
+- `agentsflow-prd.md` §9 roadmap 只承接已分级、已归因、已确认价值的中期事项。
+- `docs/testing-supplementation.md` 负责定义“不同等级缺陷需要什么验证”。
+- 当缺陷识别结果改变了当前阶段优先级时，必须同步 PRD，而不是只更新台账。
+
+## 11. 维护模板
+
+### 11.1 缺陷记录模板
+
+```md
+### AF-Dxxx 缺陷标题
+
+- 类型:
+- 严重度:
+- 状态:
+- 所属旅程 / 模块:
+- 触发条件:
+- 预期结果:
+- 实际结果:
+- 根因层:
+- 代码锚点:
+- 验证锚点:
+- 推荐修复类别:
+- PRD / Roadmap 关联:
+- 下一步:
 ```
 
-## 6. 防退化机制
+### 11.2 交付后文档回填模板
 
-### 6.1 E2E 测试守门
+```md
+- 本次变化影响的用户路径:
+- 已更新文档:
+- 未更新但已确认无需变更的文档:
+- 新增 / 关闭 / 变更状态的缺陷:
+- 验证方式:
+```
 
-每个 P0 缺陷修复后，必须在 `requirements-e2e.test.ts` 中添加对应测试:
-- 测试直接操作 Zustand store，不依赖 DOM
-- 使用 `FakeAgentAdapter` + `registerRuntimeAdapterExtension`
-- `afterEach` 中必须 `unregisterRuntimeAdapterExtension` 并重置 store
+## 12. 本文档的维护规则
 
-### 6.2 契约-UI 一致性检查
-
-在 CI 中增加步骤:
-1. 提取 `AgentDefSchema` 的所有可选字段名
-2. 提取 `AgentMainSpec.params` + `AgentSubSpec.params` 的 paramId
-3. 断言关键字段（model, toolPolicy, memoryPolicy, budgets, timeouts, outputKind）在 params 中有对应条目
-4. 断言失败 → CI 阻断
-
-### 6.3 交互闭环检查
-
-对每个用户操作，E2E 测试必须验证:
-1. 操作触发后 store 状态变更正确
-2. 操作后 UI 可继续正常交互（无死胡同）
-3. 操作幂等性（重复触发不产生副作用）
-
-## 7. 与 PRD 的联动规则
-
-- 扫描结果中的 P0 缺陷 → 必须出现在 PRD §8 "当前关键缺口"
-- 扫描结果中的 P1 缺陷 → 必须出现在 PRD §9 "中期 Roadmap" Phase 1
-- 新增 KR → 必须有对应验收信号和验证方式
-- 缺陷修复 → 必须同步更新扫描结果中的状态
-- 每次迭代结束 → 重新执行三维扫描，更新本文档
+- 当分析任务类型新增、状态模型变化、维护策略变化时，更新本文档。
+- 当只增加或关闭某条具体缺陷时，更新 `defect-registry.md`，不要改本文档主体。
+- 当本文档新增章节时，必须同步更新 `docs/prd/README.md`、`docs/README.md` 与 `.github/copilot-instructions.md` 的路由入口。

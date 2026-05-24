@@ -18,6 +18,9 @@
 | 文档地图 | `docs/README.md` |
 | 人类贡献流程 | `CONTRIBUTING.md` |
 | 维护者与运维指南 | `MAINTENANCE.md` |
+| 产品缺陷识别 / 复扫 | `docs/prd/product-feature-analysis-methodology.md` |
+| 活跃缺陷与状态 | `docs/prd/defect-registry.md` |
+| 功能进化 / 深度优化 | `docs/prd/agentsflow-prd.md` |
 | Workbench 壳层约束 | `docs/adr/001-workbench-layout.md` |
 | Flow 运行时模型 | `docs/adr/002-flow-runtime-extension.md` |
 | 节点与运行时契约 | `docs/specs/001-flow-node-contract.md` |
@@ -31,6 +34,9 @@
 - 涉及 flow 语义、节点行为、运行时绑定时，先看 ADR 002 和 specs 001/002。
 - 涉及 `.agents-flow/`、`agentRef`、Prompt 装配时，先看 spec 003。
 - 涉及 Workbench 布局、面板、侧栏或 React Flow 上下文时，先看 ADR 001。
+- 涉及缺陷识别、功能复扫、闭环分析时，先看 `docs/prd/product-feature-analysis-methodology.md`，再看 `docs/prd/defect-registry.md`，最后再决定是否需要改 PRD。
+- 涉及功能进化或深度优化时，先判断这是“闭环增强”还是“范围扩展”；前者按方法论执行，后者再进入 PRD 范围变更。
+- 任何代码任务结束前，都必须检查是否需要同步更新 PRD 文档、缺陷台账、测试规范或文档地图；不能只改实现不回填文档。
 
 ## 3. 标准工作流
 
@@ -262,7 +268,7 @@ E2E 验证测试的编写标准：
 - [ ] 改动文件没有新增 diagnostics、类型错误、lint 问题或明显的调试残留，如临时日志、注释掉的旧代码、试验文件。
 - [ ] 对 schema、契约、运行时绑定、Prompt 资产或用户可见行为的修改，相关文档或说明已同步更新。
 - [] Git commit（不 push）。
-log 内容：
+log 内容 （使用英文）：
 ```
 修改任务：<简要描述改动内容> - {Agent}/{模型名}
 [ ] 修改列表 1

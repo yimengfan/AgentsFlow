@@ -43,8 +43,18 @@ Use the following document layers.
 
 1. `docs/prd/agentsflow-prd.md`
 2. `docs/prd/prd-management.md`
-3. Relevant ADR or spec for the affected area
-4. Target implementation anchors in `packages/` or `apps/`
+3. `docs/prd/product-feature-analysis-methodology.md`
+4. `docs/prd/defect-registry.md`
+5. Relevant ADR or spec for the affected area
+6. Target implementation anchors in `packages/` or `apps/`
+
+### Analyzing product defects or feature evolution
+
+1. `docs/prd/product-feature-analysis-methodology.md`
+2. `docs/prd/defect-registry.md`
+3. `docs/prd/agentsflow-prd.md`
+4. `docs/testing-supplementation.md`
+5. Relevant ADR or spec for the affected area
 
 ### Changing the workbench UI shell
 
@@ -77,6 +87,8 @@ Use the following document layers.
 
 - `docs/prd/agentsflow-prd.md`: current-stage product PRD with Objective / KR structure, scope, gaps, and roadmap
 - `docs/prd/prd-management.md`: PRD governance, state transitions, traceability, and change gates
+- `docs/prd/product-feature-analysis-methodology.md`: task-based methodology for defect identification, defect execution, feature evolution, and documentation maintenance
+- `docs/prd/defect-registry.md`: live defect registry with states, evidence anchors, and current active gaps
 
 ### Supporting Guides
 
@@ -89,6 +101,7 @@ Use the following document layers.
 
 - Prefer linking to an existing ADR or spec over restating the same rules.
 - Put product goals, staged delivery scope, and roadmap in `docs/prd/` rather than duplicating them in ADRs or package docs.
+- Keep stable product-analysis rules in `product-feature-analysis-methodology.md` and volatile findings in `defect-registry.md`; do not mix them.
 - Put stable rationale in ADRs, executable rules in specs, and contributor behavior in `CONTRIBUTING.md` or `.github/copilot-instructions.md`.
 - Keep `MAINTENANCE.md` focused on operations, troubleshooting, and maintainer procedures.
 - Keep `.github/copilot-instructions.md` short enough to be scanned before editing.

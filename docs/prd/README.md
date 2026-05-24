@@ -6,14 +6,31 @@ This directory holds the product requirement layer for AgentsFlow.
 
 ## Reading Order
 
+### 理解当前产品范围
+
 1. `agentsflow-prd.md` — 总 PRD，描述产品问题、目标用户、当前阶段范围、Objective / KR 与中期 roadmap。
 2. `prd-management.md` — PRD 管理规范，描述状态流转、评审节奏、变更门禁、追溯规则与条目模板。
+
+### 做缺陷识别 / 功能复扫
+
+1. `product-feature-analysis-methodology.md` — 缺陷识别、缺陷执行、功能进化与文档维护的方法论。
+2. `defect-registry.md` — 当前活跃缺陷与状态。
+3. `agentsflow-prd.md` — 当前阶段关键缺口与 roadmap 摘要。
+
+### 做功能进化 / 深度优化
+
+1. `agentsflow-prd.md`
+2. `product-feature-analysis-methodology.md`
+3. `prd-management.md`
 
 ## How To Use
 
 - 当你需要理解“这个产品当前要交付什么、为什么做、做到什么算完成”时，先看这里。
+- 当你需要识别缺陷、复扫已有功能、判断某个能力是否只是“伪闭环”时，优先看方法论和缺陷台账，而不是直接改 PRD。
+- 当你需要规划已有能力的深度优化时，先判断这是不是功能进化，而不是平行扩展。
 - 当你需要修改架构、运行时绑定、Prompt 装配、节点契约或平台边界时，再继续阅读对应 ADR / spec。
 - 当需求发生变化时，先更新 PRD，再核查是否需要同步更新 ADR、spec、测试与实现。
+- 当代码交付完成后，同步更新文档，不允许把文档回填留到后续任务。
 
 ## Related Documents
 

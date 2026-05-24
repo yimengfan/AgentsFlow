@@ -261,68 +261,50 @@ AgentsFlow 在当前阶段的产品主张如下：
 
 ## 8. 当前关键缺口
 
-> 扫描方法论见 `docs/prd/product-feature-analysis-methodology.md`，以下为最新三维扫描结果。
+> 稳定分析规则见 `docs/prd/product-feature-analysis-methodology.md`。
+> 活跃缺陷源数据见 `docs/prd/defect-registry.md`。
+> 本节只汇总当前阶段必须被产品层看见的 P0/P1 关键缺口，不再直接承载完整缺陷台账。
 
 ### P0 — 功能失效（用户核心路径阻断）
 
-- **A1 新建会话不清除运行状态**: 点击 "+" 新建会话时，`handleNewSession` 仅调 `clearLoadedSession()`（重置 hook 局部状态），未调 `clearRun(flowPath)`（清除 RuntimeStore 中的 `LocalRunRecord`），导致旧 run 数据残留，用户无法真正开始新会话。
-  - KR: 新建会话后 `runsByFlowPath[selectedFlowPath]` 为空
-  - 验证: E2E 测试 `requirements-e2e.test.ts` 需求 11
+- **AF-D001 Desktop 平台入口未闭环**: Desktop renderer 仍未完成 `PlatformProvider` 注入，桌面端 Workbench 主路径无法与平台适配层正确闭合。
+  - KR: Desktop 与 Web / Studio 保持一致的平台注入链路
+  - 验证: Desktop smoke `pnpm dev:desktop`
 
-- **B1 模型选择为纯文本输入**: `agent-main` 和 `agent-sub` 的 model 参数 `paramType: "string"`，用户需手动输入模型名称，无法从下拉列表选择可用模型。
-  - KR: model 参数改为 `paramType: "select"` 并提供常用模型选项
-  - 验证: E2E 测试验证 NodeSpec params 包含 model select
-
-- **B3 无 toolPolicy 配置 UI**: `AgentDefSchema.toolPolicy` 定义了 `allowedCapabilities`、`blockedTools`、`approvalRequirement`，但 NodeSpec 未暴露任何对应参数，用户无法配置工具策略。
-  - KR: agent-main/agent-sub 添加 toolPolicy 相关 params（approvalRequirement select）
-  - 验证: E2E 测试验证 params 包含 toolPolicy 字段
-
-- **C1 无 Flow 保存功能**: `workspace-store` 有 `isDirty` 标记和 `markSaved` action，但无 `saveFlow` action 将 YAML 持久化到磁盘。用户修改 Flow 后无法保存。
-  - KR: 新增 `saveFlow(flowPath)` action 调用 `platform.flow.save()`
-  - 验证: E2E 测试验证 saveFlow 调用后 isDirty 清除
-
-- **F1/F2 无全局设置面板**: `LeftViewId` 不包含 "settings"，无 settings store，无全局模型/transport 默认配置。每次创建 Flow 都需重新配置。
-  - KR: 新增 "settings" LeftViewId、settings store、settings panel
-  - 验证: E2E 测试验证 settings store 读写和 LeftViewId 扩展
+- **AF-D002 Web 保存与校验接口 contract 未落地**: HTTP 适配层要求的 save / validate contract 与当前 Web dev server 暴露的接口不一致，Web 模式下关键编辑闭环仍有断口。
+  - KR: Web `flow.save` / `flow.validate` 路径与 HTTP adapter 完整对齐
+  - 验证: Web smoke + 平台边界验证
 
 ### P1 — 功能缺失（用户可发现但可绕行）
 
-- **A2 会话仅内存存储**: `useSessionPersistence` 依赖 `platform.workspace.createFile` 但无 load API，历史会话列表无持久化。
-- **B2/B4/B5/B6 Agent 配置参数缺失**: turnMode、memoryPolicy、budgets/timeouts、outputKind 在 Schema 中定义但 NodeSpec 未暴露。
-- **C2 无 Cmd+S 快捷键**: Workbench 无 keydown handler 保存当前 Flow。
-- **C3 dirty 标记无 UI 指示**: Tab 标题无 dirty dot 或 * 标记。
-- **D1 edge I/O 展示不完整**: Inspector 仅显示 edge ID，未显示 port data。
-- **D2 无 adapterKind 选择**: 运行时绑定路径关键字段未在 UI 暴露。
+- **AF-D003 Agent `turnMode` 语义漂移**: Agent 节点在 NodeSpec、schema、starter flow 与 runtime 间使用了不同 `turnMode` 语义，配置与执行不再同源。
+- **AF-D004 全局设置未进入默认创建链路**: Settings 面板已存在，但默认模型、transport 与审批策略仍然停留在孤立状态，未真正参与 Flow / Agent 默认创建。
+- **AF-D005 Inspector 高级参数编辑保真度不足**: `multiselect` 等高级参数当前仍缺结构化编辑能力，存在“能配但容易配错”的伪闭环。
 
 ### P2 — 体验缺陷
 
-- Workspace Pane 仍是占位态，缺少真正的工作区设置与管理能力。
-- YAML 面板目前被关闭，图形编辑与定义层的联动能力未完成产品化。
-- `.agents-flow` 缺少专门的浏览 / 管理界面，资产层对普通用户仍偏隐性。
-- 断点式、单步式、条件式调试不在当前阶段交付范围内。
-- Flow Selector 与 Flow List 装载链路不完整，聊天与历史入口还不够顺滑。
+- **AF-D006 Workspace 视图仍为占位态**: 导航入口已暴露，但内容尚未形成可交付的工作区管理能力。
+- YAML 联动、资产可视化与更强调试能力仍属于中期进化项，不作为当前阶段闭环已完成能力。
 
 ## 9. 中期 Roadmap
 
 ### Phase 1: 当前阶段与近 1 个版本
 
-- 稳定图形化编排主路径
-- 提升 Inspector 与运行详情可理解性
-- 打通 Flow 选择、运行历史与会话加载
-- 明确 Prompt Sources、绑定路径与错误定位的产品呈现
+- 完成 Web / Desktop 平台主链路闭环
+- 对齐保存、校验、运行时绑定等关键 contract
+- 清理仍然会误导用户的伪闭环入口或占位面
 
 ### Phase 2: 近 2 个版本
 
-- 恢复或重设计 YAML 联动与验证反馈
-- 增强 `.agents-flow` 的可视化浏览与引用解释
-- 为节点与 Prompt 资产增加更强的配置指导与预览能力
+- 把全局设置、默认配置、持久化与恢复链路接入真实主路径
+- 提升 Inspector 配置器的结构化编辑保真度
+- 强化历史、恢复与调试可解释性
 
 ### Phase 3: 中期方向
 
-- 断点与单步调试
-- 更成熟的资产管理与引用关系视图
-- 更强的团队协作和共享能力
-- 更完整的外部 runtime / provider 产品化接入
+- 更成熟的 YAML 联动、资产浏览和引用可视化
+- 更强的调试 ergonomics 与运维观测面
+- 经确认后再引入新的产品面，而不是先做平行扩展
 
 ## 10. 相关实现锚点
 
@@ -338,5 +320,7 @@ AgentsFlow 在当前阶段的产品主张如下：
 ## 11. 文档维护要求
 
 - 当 Objective / KR 状态变化时，必须同步更新状态与依赖说明。
+- 当活跃缺陷状态变化时，先更新 `docs/prd/defect-registry.md`，再同步回填本 PRD 的关键缺口摘要。
+- 当新增产品分析或维护文档时，必须同步更新 `docs/prd/README.md`、`docs/README.md`、`README.md` 与 `.github/copilot-instructions.md` 的路由入口。
 - 当需求触达运行时绑定、Prompt 装配顺序、平台边界、Workbench 可见行为时，必须同步核查 ADR / spec / tests 是否需要更新。
 - 当某项能力被明确降级、延后或取消时，必须更新“范围外”或 roadmap，不得仅靠口头同步。

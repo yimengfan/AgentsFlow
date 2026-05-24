@@ -40,6 +40,8 @@
 
 - `docs/prd/agentsflow-prd.md` — 总 PRD
 - `docs/prd/prd-management.md` — 本管理规范
+- `docs/prd/product-feature-analysis-methodology.md` — 产品分析、缺陷维护与功能进化的方法论
+- `docs/prd/defect-registry.md` — 活跃缺陷动态台账
 
 如后续拆分模块附录，应保持“总 PRD 统一目标、附录展开模块”的结构，避免多个主 PRD 并列失控。
 
@@ -132,6 +134,7 @@
 - 实现与现有架构边界没有冲突，或相关 ADR / spec 已同步更新。
 - 至少完成一轮与改动切片匹配的验证。
 - 涉及用户可见行为、运行时契约或平台边界时，已补充相应测试或明确记录未补原因。
+- 如任务识别、关闭或改变了缺陷状态，`docs/prd/defect-registry.md` 已同步回填。
 - 文档中的状态、实现锚点、验证方式和剩余风险已回填。
 
 ## 11. 推荐协作方式
@@ -149,3 +152,74 @@
 - 任何涉及 Prompt 资产的需求，都必须尊重现有的 6 层装配顺序与 `agentRef` 绑定模型。
 
 这些规则是为了避免 PRD 与现有实现、ADR、spec 发生根本冲突。
+
+## 13. 文档维护与失效防护
+
+### 13.1 编码完成后的文档更新门禁
+
+- 任何用户可见行为、平台链路、运行时语义、验证命令或缺陷状态变化，必须在同一任务内更新相关文档。
+- 不允许把“代码已完成、文档稍后补”视为合格交付。
+- 若最终判断无需更新文档，交付说明里必须明确写出原因。
+
+### 13.2 文档更新优先级
+
+建议按以下顺序回填：
+
+1. 直接失效的权威文档（PRD、Spec、维护规范）
+2. 活跃缺陷台账或功能进化计划
+3. 文档地图和 instruction 路由
+
+### 13.3 文档失效判断
+
+以下任一情况成立，即视为文档已失效，必须更新：
+
+- 文档描述的行为与当前实现不一致
+- 文档仍将已修复问题写成“当前关键缺口”
+- 新增文档无法从 `docs/README.md`、`docs/prd/README.md`、`README.md` 或 `.github/copilot-instructions.md` 进入
+- 命令、入口、验证或平台边界描述已经改变
+
+## 14. 缺陷台账维护策略
+
+### 14.1 台账职责
+
+- `docs/prd/defect-registry.md` 是活跃缺陷的动态源数据。
+- `docs/prd/agentsflow-prd.md` 只保留当前阶段需要被产品层看到的 P0/P1 摘要，不复制全部台账。
+
+### 14.2 缺陷状态要求
+
+每条缺陷必须具备以下信息后才能进入活跃台账：
+
+- 缺陷标题与类型
+- 严重度与状态
+- 触发条件、预期结果、实际结果
+- 根因层
+- 代码锚点与验证锚点
+- 下一步或关闭说明
+
+### 14.3 维护责任
+
+- Product Owner 负责判断缺陷是否应进入当前阶段的关键缺口或 roadmap。
+- Tech Owner 负责确认根因层、影响范围和需要联动的 ADR / spec / tests。
+- Delivery Owner 负责在修复后更新状态与验证记录。
+
+## 15. 任务分型与方法路由
+
+### 缺陷识别任务
+
+- 首选文档：`docs/prd/product-feature-analysis-methodology.md` -> `docs/prd/defect-registry.md` -> `docs/prd/agentsflow-prd.md`
+- 输出要求：新增或更新缺陷条目，并判断是否进入 PRD §8
+
+### 缺陷执行任务
+
+- 首选文档：`docs/prd/defect-registry.md` -> `docs/testing-supplementation.md` -> 相关 PRD / Spec
+- 输出要求：更新状态、验证、相关 PRD / 测试门禁
+
+### 功能进化任务
+
+- 首选文档：`docs/prd/agentsflow-prd.md` -> `docs/prd/product-feature-analysis-methodology.md` -> 相关 ADR / Spec
+- 输出要求：进化 brief、非目标、影响范围、验证方式
+
+### 文档维护任务
+
+- 首选文档：`docs/README.md` -> `docs/prd/README.md` -> 本文档
+- 输出要求：文档入口、路由、分层和失效项全部更新
