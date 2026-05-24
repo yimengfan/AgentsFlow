@@ -3,6 +3,7 @@ import type { AgentDef, FlowDefinition } from "@agentsflow/flow-schema";
 import { PiMonoAgentAdapter } from "@agentsflow/pi-mono-runtime";
 import { FakeAgentAdapter } from "@agentsflow/testing-kit";
 import { DeepSeekChatAdapter } from "./deepseek-chat-adapter.js";
+import { useSettingsStore } from "../store/settings-store.js";
 
 export interface RuntimeAdapterExtensionContext {
   readonly flow: FlowDefinition;
@@ -17,6 +18,37 @@ export interface RuntimeAdapterExtension {
 
 const runtimeAdapterExtensions = new Map<string, RuntimeAdapterExtension>();
 let builtinExtensionsRegistered = false;
+
+/**
+ * Resolve provider config from settings store for a given adapter kind.
+ * Falls back to env vars if no matching provider is found.
+ */
+function resolveProviderConfig(adapterKind: string): { baseUrl?: string; apiKey?: string; model?: string } {
+  const providers = useSettingsStore.getState().providers;
+  // Map adapter kind to provider tag heuristic
+  const tagHint = adapterKind === "deepseek" ? "deepseek" : adapterKind;
+  const matchingProvider = providers.find((p) =>
+    p.tag.toLowerCase() === tagHint.toLowerCase()
+    || p.tag.toLowerCase().includes(tagHint.toLowerCase())
+  );
+
+  if (matchingProvider) {
+    // Use composite defaultModelKey to extract model
+    const defaultKey = useSettingsStore.getState().defaultModelKey;
+    let model: string | undefined;
+    if (defaultKey && defaultKey.startsWith(`${matchingProvider.tag}/`)) {
+      model = defaultKey.slice(matchingProvider.tag.length + 1);
+    }
+    return {
+      baseUrl: matchingProvider.baseUrl,
+      apiKey: matchingProvider.apiKey,
+      ...(model !== undefined ? { model } : {}),
+    };
+  }
+
+  // No matching provider — fall back to env vars (DeepSeekChatAdapter resolves internally)
+  return {};
+}
 
 function ensureBuiltinExtensions(): void {
   if (builtinExtensionsRegistered) {
@@ -35,17 +67,31 @@ function ensureBuiltinExtensions(): void {
   registerRuntimeAdapterExtension({
     adapterKind: "deepseek",
     displayName: "DeepSeek Chat",
-    createAdapter: () => new DeepSeekChatAdapter(),
+    createAdapter: () => {
+      const providerConfig = resolveProviderConfig("deepseek");
+      return new DeepSeekChatAdapter({
+        ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
+        ...(providerConfig.apiKey ? { apiKey: providerConfig.apiKey } : {}),
+        ...(providerConfig.model ? { model: providerConfig.model } : {}),
+      });
+    },
   });
   registerRuntimeAdapterExtension({
     adapterKind: "pi-mono",
     displayName: "pi-mono",
-    createAdapter: ({ flow, agentDef }) => new PiMonoAgentAdapter({
-      flowName: flow.meta.name,
-      ...(agentDef.modelProfile?.model !== undefined ? { model: agentDef.modelProfile.model } : {}),
-      ...(agentDef.modelProfile?.temperature !== undefined ? { temperature: agentDef.modelProfile.temperature } : {}),
-      ...(agentDef.adapterConfig !== undefined ? { adapterConfig: agentDef.adapterConfig } : {}),
-    }),
+    createAdapter: ({ flow, agentDef }) => {
+      const providerConfig = resolveProviderConfig("deepseek");
+      return new PiMonoAgentAdapter({
+        flowName: flow.meta.name,
+        ...(agentDef.modelProfile?.model !== undefined ? { model: agentDef.modelProfile.model } : {}),
+        ...(agentDef.modelProfile?.temperature !== undefined ? { temperature: agentDef.modelProfile.temperature } : {}),
+        ...(agentDef.adapterConfig !== undefined ? { adapterConfig: agentDef.adapterConfig } : {}),
+        // Inject settings store provider config if available
+        ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
+        ...(providerConfig.apiKey ? { apiKey: providerConfig.apiKey } : {}),
+        ...(providerConfig.model ? { model: providerConfig.model } : {}),
+      });
+    },
   });
 }
 

@@ -2044,86 +2044,177 @@ describe("需求12: Flow 保存功能", () => {
 
 describe("需求13: Settings Store 全局设置", () => {
   afterEach(() => {
-    // 重置 settings store 到默认状态
+    // 重置 settings store 到新默认状态
     useSettingsStore.setState({
-      defaultModelId: "deepseek-v4-flash",
-      defaultTransport: "http",
+      providers: [],
+      defaultModelKey: null,
       defaultApprovalRequirement: "destructive_only",
-      showAdvancedConfig: false,
-      customModelOptions: [],
+      activeSettingsTab: "llm",
     });
   });
 
-  it("默认值正确: defaultModelId, defaultTransport, defaultApprovalRequirement", () => {
+  it("默认值正确: providers 为空, defaultModelKey 为 null, defaultApprovalRequirement 为 destructive_only", () => {
     const state = useSettingsStore.getState();
-    expect(state.defaultModelId).toBe("deepseek-v4-flash");
-    expect(state.defaultTransport).toBe("http");
+    expect(state.providers).toHaveLength(0);
+    expect(state.defaultModelKey).toBeNull();
     expect(state.defaultApprovalRequirement).toBe("destructive_only");
-    expect(state.showAdvancedConfig).toBe(false);
-    expect(state.customModelOptions).toHaveLength(0);
+    expect(state.activeSettingsTab).toBe("llm");
   });
 
-  it("getAllModelOptions 返回内置 + 自定义模型列表", () => {
-    const state = useSettingsStore.getState();
-    const allOptions = state.getAllModelOptions();
+  it("addProvider 创建新提供商并返回 id", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-test",
+      protocol: "openai",
+    });
+    expect(id).toBeTruthy();
 
-    // 应包含 6 个内置模型
-    expect(allOptions.length).toBeGreaterThanOrEqual(6);
-    expect(allOptions.some((o) => o.id === "deepseek-v4-flash")).toBe(true);
-    expect(allOptions.some((o) => o.id === "gpt-4o")).toBe(true);
-    expect(allOptions.some((o) => o.id === "claude-sonnet-4-20250514")).toBe(true);
+    const providers = useSettingsStore.getState().providers;
+    expect(providers).toHaveLength(1);
+    expect(providers[0]?.tag).toBe("deepseek");
+    expect(providers[0]?.baseUrl).toBe("https://api.deepseek.com");
+    expect(providers[0]?.apiKey).toBe("sk-test");
+    expect(providers[0]?.protocol).toBe("openai");
+    expect(providers[0]?.models).toHaveLength(0);
   });
 
-  it("addCustomModelOption 添加自定义模型后 getAllModelOptions 包含它", () => {
-    useSettingsStore.getState().addCustomModelOption({
-      id: "my-custom-model",
-      label: "My Custom Model",
-      provider: "custom",
+  it("updateProvider 更新指定提供商的属性", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-old",
+      protocol: "openai",
     });
 
-    const allOptions = useSettingsStore.getState().getAllModelOptions();
-    expect(allOptions.length).toBeGreaterThanOrEqual(7);
-    expect(allOptions.some((o) => o.id === "my-custom-model")).toBe(true);
-    expect(allOptions.find((o) => o.id === "my-custom-model")?.label).toBe("My Custom Model");
+    useSettingsStore.getState().updateProvider(id, { apiKey: "sk-new", tag: "deepseek-v2" });
+
+    const provider = useSettingsStore.getState().providers.find((p) => p.id === id);
+    expect(provider?.apiKey).toBe("sk-new");
+    expect(provider?.tag).toBe("deepseek-v2");
+    // baseUrl 不变
+    expect(provider?.baseUrl).toBe("https://api.deepseek.com");
   });
 
-  it("removeCustomModelOption 删除指定自定义模型", () => {
-    useSettingsStore.getState().addCustomModelOption({
-      id: "temp-model",
-      label: "Temporary Model",
-      provider: "temp",
+  it("removeProvider 删除指定提供商", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "test",
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+      protocol: "openai",
     });
 
-    const afterAdd = useSettingsStore.getState().getAllModelOptions();
-    expect(afterAdd.some((o) => o.id === "temp-model")).toBe(true);
-
-    useSettingsStore.getState().removeCustomModelOption("temp-model");
-
-    const afterRemove = useSettingsStore.getState().getAllModelOptions();
-    expect(afterRemove.some((o) => o.id === "temp-model")).toBe(false);
+    expect(useSettingsStore.getState().providers).toHaveLength(1);
+    useSettingsStore.getState().removeProvider(id);
+    expect(useSettingsStore.getState().providers).toHaveLength(0);
   });
 
-  it("setDefaultModelId 更新默认模型", () => {
-    useSettingsStore.getState().setDefaultModelId("gpt-4o");
-    expect(useSettingsStore.getState().defaultModelId).toBe("gpt-4o");
+  it("setProviderModels 设置提供商的模型列表和错误信息", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-test",
+      protocol: "openai",
+    });
+
+    useSettingsStore.getState().setProviderModels(id, [
+      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: id },
+      { id: "deepseek-reasoner", label: "DeepSeek Reasoner", providerId: id },
+    ], null);
+
+    const provider = useSettingsStore.getState().providers.find((p) => p.id === id);
+    expect(provider?.models).toHaveLength(2);
+    expect(provider?.models[0]?.id).toBe("deepseek-v4-flash");
+    expect(provider?.lastFetchError).toBeNull();
+    expect(provider?.lastFetchedAt).not.toBeNull();
   });
 
-  it("setDefaultTransport 更新传输类型", () => {
-    useSettingsStore.getState().setDefaultTransport("pi-mono");
-    expect(useSettingsStore.getState().defaultTransport).toBe("pi-mono");
+  it("setProviderModels 记录获取错误", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "bad-provider",
+      baseUrl: "http://invalid",
+      apiKey: "",
+      protocol: "openai",
+    });
+
+    useSettingsStore.getState().setProviderModels(id, [], "Connection refused");
+
+    const provider = useSettingsStore.getState().providers.find((p) => p.id === id);
+    expect(provider?.models).toHaveLength(0);
+    expect(provider?.lastFetchError).toBe("Connection refused");
+  });
+
+  it("addManualModel / removeModel 管理手动添加的模型", () => {
+    const id = useSettingsStore.getState().addProvider({
+      tag: "ollama",
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+      protocol: "openai",
+    });
+
+    useSettingsStore.getState().addManualModel(id, { id: "llama3", label: "Llama 3" });
+    useSettingsStore.getState().addManualModel(id, { id: "mistral", label: "Mistral" });
+
+    const provider = useSettingsStore.getState().providers.find((p) => p.id === id);
+    expect(provider?.models).toHaveLength(2);
+
+    useSettingsStore.getState().removeModel(id, "llama3");
+    const updated = useSettingsStore.getState().providers.find((p) => p.id === id);
+    expect(updated?.models).toHaveLength(1);
+    expect(updated?.models[0]?.id).toBe("mistral");
+  });
+
+  it("setDefaultModelKey 更新默认模型（composite key 格式）", () => {
+    useSettingsStore.getState().setDefaultModelKey("deepseek/deepseek-v4-flash");
+    expect(useSettingsStore.getState().defaultModelKey).toBe("deepseek/deepseek-v4-flash");
+
+    useSettingsStore.getState().setDefaultModelKey(null);
+    expect(useSettingsStore.getState().defaultModelKey).toBeNull();
+  });
+
+  it("getAllModels 返回所有提供商的所有模型", () => {
+    const id1 = useSettingsStore.getState().addProvider({
+      tag: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-test",
+      protocol: "openai",
+    });
+    const id2 = useSettingsStore.getState().addProvider({
+      tag: "ollama",
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+      protocol: "openai",
+    });
+
+    useSettingsStore.getState().setProviderModels(id1, [
+      { id: "deepseek-v4-flash", label: "V4 Flash", providerId: id1 },
+    ], null);
+    useSettingsStore.getState().setProviderModels(id2, [
+      { id: "llama3", label: "Llama 3", providerId: id2 },
+      { id: "mistral", label: "Mistral", providerId: id2 },
+    ], null);
+
+    const allModels = useSettingsStore.getState().getAllModels();
+    expect(allModels).toHaveLength(3);
+  });
+
+  it("setActiveSettingsTab 切换设置面板标签", () => {
+    useSettingsStore.getState().setActiveSettingsTab("tools");
+    expect(useSettingsStore.getState().activeSettingsTab).toBe("tools");
+
+    useSettingsStore.getState().setActiveSettingsTab("mcp");
+    expect(useSettingsStore.getState().activeSettingsTab).toBe("mcp");
+
+    useSettingsStore.getState().setActiveSettingsTab("llm");
+    expect(useSettingsStore.getState().activeSettingsTab).toBe("llm");
   });
 
   it("setDefaultApprovalRequirement 更新审批策略", () => {
     useSettingsStore.getState().setDefaultApprovalRequirement("always");
     expect(useSettingsStore.getState().defaultApprovalRequirement).toBe("always");
-  });
 
-  it("toggleShowAdvancedConfig 切换高级配置显示", () => {
-    expect(useSettingsStore.getState().showAdvancedConfig).toBe(false);
-    useSettingsStore.getState().toggleShowAdvancedConfig();
-    expect(useSettingsStore.getState().showAdvancedConfig).toBe(true);
-    useSettingsStore.getState().toggleShowAdvancedConfig();
-    expect(useSettingsStore.getState().showAdvancedConfig).toBe(false);
+    useSettingsStore.getState().setDefaultApprovalRequirement("never");
+    expect(useSettingsStore.getState().defaultApprovalRequirement).toBe("never");
   });
 });
 

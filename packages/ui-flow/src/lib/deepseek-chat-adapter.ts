@@ -8,6 +8,13 @@ import type {
   AgentTurnUsage,
 } from "@agentsflow/agent-contracts";
 
+interface DeepSeekAdapterOptions {
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
+  readonly model?: string;
+  readonly temperature?: number;
+}
+
 interface DeepSeekConfig {
   readonly apiKey?: string;
   readonly baseUrl?: string;
@@ -183,6 +190,11 @@ export class DeepSeekChatAdapter implements AgentAdapter {
   };
 
   private sessions = new Map<string, AgentSessionContext>();
+  private readonly options: DeepSeekAdapterOptions;
+
+  constructor(options: DeepSeekAdapterOptions = {}) {
+    this.options = options;
+  }
 
   createSession(context: AgentSessionContext): Promise<AgentSession> {
     const errors = this.validateConfig(context.config);
@@ -349,11 +361,13 @@ export class DeepSeekChatAdapter implements AgentAdapter {
     const apiKey = this.pickString(
       metadataConfig?.apiKey,
       adapterConfig?.apiKey,
+      this.options.apiKey,
       readEnvValue("VITE_AGENTSFLOW_LLM_API_KEY"),
     );
     const baseUrl = this.pickString(
       metadataConfig?.baseUrl,
       adapterConfig?.baseUrl,
+      this.options.baseUrl,
       readEnvValue("VITE_AGENTSFLOW_LLM_BASE_URL"),
       "https://api.deepseek.com",
     );
@@ -361,6 +375,7 @@ export class DeepSeekChatAdapter implements AgentAdapter {
       modelProfile?.model,
       metadataConfig?.model,
       adapterConfig?.model,
+      this.options.model,
       readEnvValue("VITE_AGENTSFLOW_LLM_MODEL"),
       "deepseek-v4-flash",
     );
@@ -368,6 +383,7 @@ export class DeepSeekChatAdapter implements AgentAdapter {
       modelProfile?.temperature,
       metadataConfig?.temperature,
       adapterConfig?.temperature,
+      this.options.temperature,
     );
 
     if (allowPartial) {
