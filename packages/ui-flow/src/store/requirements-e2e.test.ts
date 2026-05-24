@@ -2152,8 +2152,8 @@ describe("需求13: Settings Store 全局设置", () => {
       protocol: "openai",
     });
 
-    useSettingsStore.getState().addManualModel(id, { id: "llama3", label: "Llama 3" });
-    useSettingsStore.getState().addManualModel(id, { id: "mistral", label: "Mistral" });
+    useSettingsStore.getState().addManualModel(id, { id: "llama3", label: "llama3" });
+    useSettingsStore.getState().addManualModel(id, { id: "mistral", label: "mistral" });
 
     const provider = useSettingsStore.getState().providers.find((p) => p.id === id);
     expect(provider?.models).toHaveLength(2);
@@ -2187,11 +2187,11 @@ describe("需求13: Settings Store 全局设置", () => {
     });
 
     useSettingsStore.getState().setProviderModels(id1, [
-      { id: "deepseek-v4-flash", label: "V4 Flash", providerId: id1 },
+      { id: "deepseek-v4-flash", label: "deepseek-v4-flash", providerId: id1 },
     ], null);
     useSettingsStore.getState().setProviderModels(id2, [
-      { id: "llama3", label: "Llama 3", providerId: id2 },
-      { id: "mistral", label: "Mistral", providerId: id2 },
+      { id: "llama3", label: "llama3", providerId: id2 },
+      { id: "mistral", label: "mistral", providerId: id2 },
     ], null);
 
     const allModels = useSettingsStore.getState().getAllModels();

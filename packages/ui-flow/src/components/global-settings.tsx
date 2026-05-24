@@ -286,7 +286,6 @@ function ProviderCard({
   const [editBaseUrl, setEditBaseUrl] = useState(provider.baseUrl);
   const [editApiKey, setEditApiKey] = useState(provider.apiKey);
   const [manualModelId, setManualModelId] = useState("");
-  const [manualModelLabel, setManualModelLabel] = useState("");
 
   const handleSaveEdit = () => {
     onUpdate({
@@ -301,10 +300,9 @@ function ProviderCard({
     if (!manualModelId.trim()) return;
     onAddModel({
       id: manualModelId.trim(),
-      label: manualModelLabel.trim() || manualModelId.trim(),
+      label: manualModelId.trim(),
     });
     setManualModelId("");
-    setManualModelLabel("");
   };
 
   return (
@@ -446,15 +444,9 @@ function ProviderCard({
             {/* Manual Model Add */}
             <div style={{ display: "flex", gap: SPACING.xs, marginTop: SPACING.sm }}>
               <input
-                placeholder="model-id"
+                placeholder="模型名"
                 value={manualModelId}
                 onChange={(e) => setManualModelId(e.target.value)}
-                style={{ ...inputStyle, flex: 1 }}
-              />
-              <input
-                placeholder="显示名称"
-                value={manualModelLabel}
-                onChange={(e) => setManualModelLabel(e.target.value)}
                 style={{ ...inputStyle, flex: 1 }}
               />
               <button
