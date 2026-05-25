@@ -37,7 +37,9 @@ import { useSettingsStore } from "../store/settings-store.js";
 // ─── Node kind → color ─────────────────────────────────────
 
 function kindColor(kind: string): string {
-  if (kind === "agent" || kind.startsWith("agent.")) return "#4f46e5";
+  if (kind === "agent.main") return "#4f46e5";
+  if (kind === "agent.sub" || kind === "agent") return "#6366f1";
+  if (kind.startsWith("agent.")) return "#6366f1";
   if (kind.startsWith("loader.")) return "#0d9488";
   if (kind.startsWith("control.")) return "#d97706";
   if (kind.startsWith("router.")) return "#8b5cf6";
@@ -289,9 +291,9 @@ function SpecNode({ data, selected, id }: NodeProps) {
           textOverflow: "ellipsis",
         }}
       >
-        {iconForSpec(spec, effectiveKind)} {spec?.kind ?? effectiveKind}
+        {iconForSpec(spec, effectiveKind)} {spec ? `${spec.kind}(${spec.label})` : effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) — or red warning if no agent */}
+      {/* Agent name (slightly larger, prominent) — or compact red warning if no agent */}
       <div
         style={{
           fontSize: TYPO.fontSize + 2,
@@ -301,11 +303,14 @@ function SpecNode({ data, selected, id }: NodeProps) {
           textOverflow: "ellipsis",
           ...(isAgentKind && !d.agentRef
             ? {
+                fontSize: TYPO.fontSize - 1,
+                fontWeight: 500,
+                lineHeight: "16px",
                 color: "#f87171",
-                background: "rgba(248, 113, 113, 0.2)",
-                border: "1px solid rgba(248, 113, 113, 0.4)",
-                borderRadius: 4,
-                padding: "2px 8px",
+                background: "rgba(248, 113, 113, 0.15)",
+                border: "1px solid rgba(248, 113, 113, 0.3)",
+                borderRadius: 3,
+                padding: "1px 4px",
               }
             : {}),
         }}
