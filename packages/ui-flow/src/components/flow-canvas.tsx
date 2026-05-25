@@ -205,8 +205,9 @@ function SpecNode({ data, selected, id }: NodeProps) {
         color: "#fff",
         fontSize: TYPO.fontSize,
         fontWeight: 500,
-        minWidth: isHorizontal ? 180 : 140,
-        maxWidth: 240,
+        width: isHorizontal ? 180 : 140,
+        height: 68,
+        overflow: "hidden",
         position: "relative",
         border: statusBorderColor !== "transparent" ? `2px solid ${statusBorderColor}` : undefined,
         ...(statusPulse ? { animation: "af-pulse-border 1.5s ease-in-out infinite" } : {}),
@@ -293,7 +294,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec ? `${spec.kind}(${spec.label})` : effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) — or compact red warning if no agent */}
+      {/* Agent name (slightly larger, prominent) */}
       <div
         style={{
           fontSize: TYPO.fontSize + 2,
@@ -301,30 +302,41 @@ function SpecNode({ data, selected, id }: NodeProps) {
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          ...(isAgentKind && !d.agentRef
-            ? {
-                fontSize: TYPO.fontSize - 1,
-                fontWeight: 500,
-                lineHeight: "16px",
-                color: "#f87171",
-                background: "rgba(248, 113, 113, 0.15)",
-                border: "1px solid rgba(248, 113, 113, 0.3)",
-                borderRadius: 3,
-                padding: "1px 4px",
-              }
-            : {}),
         }}
       >
-        {isAgentKind && !d.agentRef
-          ? "⚠️ 请选择 agent.md"
-          : agentDisplayName}
+        {agentDisplayName}
       </div>
-      {/* Output type badge — always show, derived from agent.md */}
+      {/* Warning: no agent selected — absolute overlay */}
+      {isAgentKind && !d.agentRef && (
+        <div
+          style={{
+            position: "absolute",
+            top: 18,
+            left: SPACING.md,
+            right: SPACING.md,
+            fontSize: TYPO.fontSize - 1,
+            fontWeight: 500,
+            lineHeight: "16px",
+            color: "#f87171",
+            background: "rgba(248, 113, 113, 0.15)",
+            border: "1px solid rgba(248, 113, 113, 0.3)",
+            borderRadius: 3,
+            padding: "1px 4px",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          ⚠️ 请选择 agent.md
+        </div>
+      )}
+      {/* Output type badge — absolute overlay */}
       {isAgentKind && resolvedOutputKind && (
         <div
           style={{
-            display: "inline-block",
-            marginTop: 3,
+            position: "absolute",
+            top: 36,
+            left: SPACING.md,
             padding: "1px 6px",
             borderRadius: 4,
             fontSize: TYPO.smallFontSize - 1,
@@ -336,13 +348,16 @@ function SpecNode({ data, selected, id }: NodeProps) {
           📤 {resolvedOutputKind}
         </div>
       )}
-      {/* Model name (small) — show resolved model from cascade */}
+      {/* Model name — absolute overlay */}
       {resolvedModel && (
         <div
           style={{
+            position: "absolute",
+            top: 50,
+            left: SPACING.md,
+            right: SPACING.md,
             fontSize: TYPO.smallFontSize - 1,
             opacity: 0.6,
-            marginTop: 2,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -447,17 +462,19 @@ function SpecNode({ data, selected, id }: NodeProps) {
         />
       ))}
 
-      {/* Runtime streaming text preview */}
+      {/* Runtime streaming text preview — absolute overlay */}
       {nodeStreaming && (
         <div
           style={{
+            position: "absolute",
+            bottom: SPACING.sm,
+            left: SPACING.md,
+            right: SPACING.md,
             fontSize: TYPO.smallFontSize - 2,
             opacity: 0.7,
-            marginTop: 4,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            maxWidth: 200,
           }}
         >
           {nodeStreaming.slice(0, 60)}…
@@ -476,17 +493,19 @@ function SpecNode({ data, selected, id }: NodeProps) {
         </div>
       )}
 
-      {/* Error message preview on failed nodes */}
+      {/* Error message preview — absolute overlay */}
       {nodeErrorTrace && nodeStatus === "failed" && (
         <div
           style={{
+            position: "absolute",
+            bottom: SPACING.sm,
+            left: SPACING.md,
+            right: SPACING.md,
             fontSize: TYPO.smallFontSize - 2,
             opacity: 0.85,
-            marginTop: 4,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            maxWidth: 200,
             color: "#fca5a5",
           }}
         >
