@@ -309,7 +309,11 @@ function SpecNode({ data, selected, id }: NodeProps) {
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           }}
         >
-          {d.model.includes("/") ? d.model.split("/").pop() : d.model}
+          {d.model
+            ? d.model.includes("/")
+              ? `${d.model.split("/").pop()} (${d.model.split("/")[0]})`
+              : d.model
+            : ""}
         </div>
       )}
 

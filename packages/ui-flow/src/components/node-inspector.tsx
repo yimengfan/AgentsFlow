@@ -666,8 +666,7 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
 
           {/* Agent Configuration — model + outputKind for agent nodes */}
           {isAgentNode && (() => {
-            const allModels = useSettingsStore.getState().getAllModels();
-            const allProviders = useSettingsStore.getState().providers;
+            const modelOptions = useSettingsStore.getState().getModelOptions();
             const nodeConfig = selectedNode.config as Record<string, unknown> | undefined;
             const currentModel = typeof nodeConfig?.model === "string" ? nodeConfig.model : "";
             const currentOutputKind = typeof nodeConfig?.outputKind === "string" ? nodeConfig.outputKind : "text";
@@ -691,12 +690,6 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
               padding: `${SPACING.xs}px ${SPACING.sm}px`,
               fontSize: TYPO.fontSize,
             };
-            // Build model key = "providerTag/modelId" for each model
-            const modelOptions = allModels.map((m) => {
-              const provider = allProviders.find((p) => p.id === m.providerId);
-              const key = provider ? `${provider.tag}/${m.id}` : m.id;
-              return { key, label: m.label };
-            });
             return (
               <section style={{ display: "grid", gap: 8 }}>
                 <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>

@@ -2353,14 +2353,14 @@ describe("需求15: 聊天消息上下文窗口大小预览", () => {
   });
 
   it("LlmModel 支持 contextWindow 可选字段", () => {
-    useSettingsStore.getState().addProvider({ tag: "test", baseUrl: "http://test" });
+    useSettingsStore.getState().addProvider({ tag: "test", baseUrl: "http://test", apiKey: "test-key", protocol: "openai" });
     const providers = useSettingsStore.getState().providers;
-    const providerId = providers[0].id;
+    const providerId = providers[0]!.id;
 
     useSettingsStore.getState().setProviderModels(providerId, [
       { id: "gpt-4o", label: "GPT-4o", providerId, contextWindow: 128_000 },
       { id: "claude-sonnet", label: "Claude Sonnet", providerId },
-    ]);
+    ]);;
 
     const models = useSettingsStore.getState().getAllModels();
     const gpt4o = models.find((m) => m.id === "gpt-4o");
@@ -2378,14 +2378,14 @@ describe("需求15: 聊天消息上下文窗口大小预览", () => {
   });
 
   it("getContextWindowForKey 解析 composite key 并返回上下文窗口大小", () => {
-    useSettingsStore.getState().addProvider({ tag: "openai", baseUrl: "http://openai" });
+    useSettingsStore.getState().addProvider({ tag: "openai", baseUrl: "http://openai", apiKey: "test-key", protocol: "openai" });
     const providers = useSettingsStore.getState().providers;
-    const providerId = providers[0].id;
+    const providerId = providers[0]!.id;
 
     // Model with explicit contextWindow
     useSettingsStore.getState().setProviderModels(providerId, [
       { id: "gpt-4o", label: "GPT-4o", providerId, contextWindow: 128_000 },
-    ]);
+    ]);;
 
     // Composite key: "providerTag/modelId"
     const result = useSettingsStore.getState().getContextWindowForKey("openai/gpt-4o");
@@ -2393,14 +2393,14 @@ describe("需求15: 聊天消息上下文窗口大小预览", () => {
   });
 
   it("getContextWindowForKey 对无显式 contextWindow 的模型回退到 lookupContextWindow", () => {
-    useSettingsStore.getState().addProvider({ tag: "anthropic", baseUrl: "http://anthropic" });
+    useSettingsStore.getState().addProvider({ tag: "anthropic", baseUrl: "http://anthropic", apiKey: "test-key", protocol: "anthropic" });
     const providers = useSettingsStore.getState().providers;
-    const providerId = providers[0].id;
+    const providerId = providers[0]!.id;
 
     // Model without explicit contextWindow, but known pattern
     useSettingsStore.getState().setProviderModels(providerId, [
       { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId },
-    ]);
+    ]);;
 
     // Should fall back to lookupContextWindow
     const result = useSettingsStore.getState().getContextWindowForKey("anthropic/claude-sonnet-4-20250514");
@@ -2408,13 +2408,13 @@ describe("需求15: 聊天消息上下文窗口大小预览", () => {
   });
 
   it("getContextWindowForKey 对未知模型返回 undefined", () => {
-    useSettingsStore.getState().addProvider({ tag: "custom", baseUrl: "http://custom" });
+    useSettingsStore.getState().addProvider({ tag: "custom", baseUrl: "http://custom", apiKey: "test-key", protocol: "openai" });
     const providers = useSettingsStore.getState().providers;
-    const providerId = providers[0].id;
+    const providerId = providers[0]!.id;
 
     useSettingsStore.getState().setProviderModels(providerId, [
       { id: "my-custom-model", label: "Custom", providerId },
-    ]);
+    ]);;
 
     const result = useSettingsStore.getState().getContextWindowForKey("custom/my-custom-model");
     expect(result).toBeUndefined();
@@ -2423,5 +2423,60 @@ describe("需求15: 聊天消息上下文窗口大小预览", () => {
   it("getContextWindowForKey 对无法解析的 key 返回 undefined", () => {
     const result = useSettingsStore.getState().getContextWindowForKey("invalid-key-no-slash");
     expect(result).toBeUndefined();
+  });
+});
+
+// ── 需求16: 模型选择列表统一接口 (getModelOptions) ──────────
+
+describe("需求16: 模型选择列表统一接口", () => {
+  afterEach(() => {
+    const { providers } = useSettingsStore.getState();
+    for (const p of providers) {
+      useSettingsStore.getState().removeProvider(p.id);
+    }
+  });
+
+  it("getModelOptions 返回带 (tag) 的 label 和 composite key", () => {
+    useSettingsStore.getState().addProvider({ tag: "openai", baseUrl: "http://openai", apiKey: "key1", protocol: "openai" });
+    const providers = useSettingsStore.getState().providers;
+    const providerId = providers[0]!.id;
+
+    useSettingsStore.getState().setProviderModels(providerId, [
+      { id: "gpt-4o", label: "GPT-4o", providerId },
+      { id: "gpt-4o-mini", label: "GPT-4o Mini", providerId },
+    ]);
+
+    const options = useSettingsStore.getState().getModelOptions();
+    expect(options).toHaveLength(2);
+    expect(options[0]!.key).toBe("openai/gpt-4o");
+    expect(options[0]!.label).toBe("GPT-4o (openai)");
+    expect(options[1]!.key).toBe("openai/gpt-4o-mini");
+    expect(options[1]!.label).toBe("GPT-4o Mini (openai)");
+  });
+
+  it("getModelOptions 跨多个 provider 合并返回", () => {
+    useSettingsStore.getState().addProvider({ tag: "openai", baseUrl: "http://openai", apiKey: "key1", protocol: "openai" });
+    useSettingsStore.getState().addProvider({ tag: "anthropic", baseUrl: "http://anthropic", apiKey: "key2", protocol: "anthropic" });
+
+    const providers = useSettingsStore.getState().providers;
+    const openaiId = providers.find((p) => p.tag === "openai")!.id;
+    const anthropicId = providers.find((p) => p.tag === "anthropic")!.id;
+
+    useSettingsStore.getState().setProviderModels(openaiId, [
+      { id: "gpt-4o", label: "GPT-4o", providerId: openaiId },
+    ]);
+    useSettingsStore.getState().setProviderModels(anthropicId, [
+      { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId: anthropicId },
+    ]);
+
+    const options = useSettingsStore.getState().getModelOptions();
+    expect(options).toHaveLength(2);
+    expect(options.find((o) => o.key === "openai/gpt-4o")!.label).toBe("GPT-4o (openai)");
+    expect(options.find((o) => o.key === "anthropic/claude-sonnet-4-20250514")!.label).toBe("Claude Sonnet 4 (anthropic)");
+  });
+
+  it("getModelOptions 无 provider 时返回空数组", () => {
+    const options = useSettingsStore.getState().getModelOptions();
+    expect(options).toHaveLength(0);
   });
 });

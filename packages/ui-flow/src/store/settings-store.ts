@@ -95,6 +95,8 @@ export interface SettingsActions {
   setDefaultModelKey: (key: string | null) => void;
   /** Get all models across all providers */
   getAllModels: () => readonly LlmModel[];
+  /** Get all models as select options with composite key and label including provider tag */
+  getModelOptions: () => readonly { readonly key: string; readonly label: string }[];
   /** Get the context window size for a model by composite key "providerTag/modelId" */
   getContextWindowForKey: (key: string) => number | undefined;
 
@@ -355,6 +357,17 @@ export const useSettingsStore = create<SettingsStore>()(
       getAllModels: () => {
         const state = get();
         return state.providers.flatMap((p) => p.models);
+      },
+
+      /** Get all models as select options with composite key and label including provider tag */
+      getModelOptions: () => {
+        const state = get();
+        return state.providers.flatMap((provider) =>
+          provider.models.map((model) => ({
+            key: `${provider.tag}/${model.id}`,
+            label: `${model.label} (${provider.tag})`,
+          })),
+        );
       },
 
       /** Get the context window size for a model identified by composite key "providerTag/modelId" */
