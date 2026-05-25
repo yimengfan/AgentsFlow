@@ -291,7 +291,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec?.kind ?? effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) */}
+      {/* Agent name (slightly larger, prominent) — or red warning if no agent */}
       <div
         style={{
           fontSize: TYPO.fontSize + 2,
@@ -299,12 +299,23 @@ function SpecNode({ data, selected, id }: NodeProps) {
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
+          ...(isAgentKind && !d.agentRef
+            ? {
+                color: "#f87171",
+                background: "rgba(248, 113, 113, 0.2)",
+                border: "1px solid rgba(248, 113, 113, 0.4)",
+                borderRadius: 4,
+                padding: "2px 8px",
+              }
+            : {}),
         }}
       >
-        {agentDisplayName}
+        {isAgentKind && !d.agentRef
+          ? "⚠️ 请选择 agent.md"
+          : agentDisplayName}
       </div>
-      {/* Output type badge — derived from agent.md */}
-      {resolvedOutputKind && resolvedOutputKind !== "text" && (
+      {/* Output type badge — always show, derived from agent.md */}
+      {isAgentKind && resolvedOutputKind && (
         <div
           style={{
             display: "inline-block",
@@ -317,7 +328,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
             whiteSpace: "nowrap",
           }}
         >
-          {resolvedOutputKind}
+          📤 {resolvedOutputKind}
         </div>
       )}
       {/* Model name (small) — show resolved model from cascade */}
@@ -341,25 +352,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
           )}
         </div>
       )}
-      {/* Warning: no agentRef selected for agent nodes */}
-      {isAgentKind && !d.agentRef && (
-        <div
-          style={{
-            marginTop: 4,
-            padding: "1px 5px",
-            borderRadius: 3,
-            background: "rgba(251, 191, 36, 0.2)",
-            border: "1px solid rgba(251, 191, 36, 0.4)",
-            color: "#fbbf24",
-            fontSize: TYPO.smallFontSize - 1,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          ⚠️ 请选择 agent.md
-        </div>
-      )}
+
       {/* Warning: no model available for agent nodes */}
       {isAgentKind && !resolvedModel && (
         <div
