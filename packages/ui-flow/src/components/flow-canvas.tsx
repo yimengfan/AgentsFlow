@@ -205,8 +205,9 @@ function SpecNode({ data, selected, id }: NodeProps) {
         color: "#fff",
         fontSize: TYPO.fontSize,
         fontWeight: 500,
-        minWidth: isHorizontal ? 180 : 140,
-        maxWidth: 240,
+        width: isHorizontal ? 180 : 140,
+        height: 62,
+        overflow: "hidden",
         position: "relative",
         border: statusBorderColor !== "transparent" ? `2px solid ${statusBorderColor}` : undefined,
         ...(statusPulse ? { animation: "af-pulse-border 1.5s ease-in-out infinite" } : {}),
@@ -362,7 +363,10 @@ function SpecNode({ data, selected, id }: NodeProps) {
       {isAgentKind && !resolvedModel && (
         <div
           style={{
-            marginTop: 4,
+            position: "absolute",
+            bottom: `${SPACING.sm}px`,
+            left: `${SPACING.md}px`,
+            right: `${SPACING.md}px`,
             padding: "1px 5px",
             borderRadius: 3,
             background: "rgba(248, 113, 113, 0.2)",
