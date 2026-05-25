@@ -21,14 +21,14 @@ export class AgentMainSpec extends NodeSpecBase {
 
   override readonly inputPorts = [
     { portId: "in", dataType: "flow" as PortDataType, required: true, label: "入" },
-    { portId: "prompt", dataType: "prompt" as PortDataType, required: false, label: "提示词" },
-    { portId: "data", dataType: "any" as PortDataType, required: false, label: "数据" },
+    { portId: "prompt", dataType: "prompt" as PortDataType, required: false },
+    { portId: "data", dataType: "any" as PortDataType, required: false },
   ] as const;
 
   override readonly outputPorts = [
     { portId: "out", dataType: "flow" as PortDataType, required: true, label: "出" },
-    { portId: "result", dataType: "string" as PortDataType, required: false, label: "结果" },
-    { portId: "plan", dataType: "plan" as PortDataType, required: false, label: "计划" },
+    { portId: "result", dataType: "string" as PortDataType, required: false },
+    { portId: "plan", dataType: "plan" as PortDataType, required: false },
   ] as const;
 
   override readonly params: ReadonlyArray<ParamDef> = [
@@ -186,25 +186,6 @@ export class AgentMainSpec extends NodeSpecBase {
       description: "最大费用（美元）",
       validation: { min: 0 },
       group: "超时与预算",
-    },
-    {
-      paramId: "outputKind",
-      label: "输出类型",
-      paramType: "select",
-      required: false,
-      defaultValue: "text",
-      options: [
-        { value: "text", label: "文本" },
-        { value: "plan", label: "计划" },
-        { value: "score", label: "评分" },
-        { value: "code", label: "代码" },
-        { value: "judge", label: "判断" },
-        { value: "review", label: "审查" },
-        { value: "artifact", label: "产物" },
-        { value: "decision", label: "决策" },
-      ],
-      description: "Agent 输出类型",
-      group: "输出",
     },
   ];
 }

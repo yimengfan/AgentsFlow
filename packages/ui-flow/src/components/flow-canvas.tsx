@@ -32,6 +32,7 @@ import { SURFACE, BORDER, TEXT, TYPO, SPACING, ACCENT } from "./workbench-tokens
 import { buildFlowRegistry, countNodesByKind, validateConnection } from "../lib/flow-graph.js";
 import { useRuntimeStore } from "../store/runtime-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
+import { useSettingsStore } from "../store/settings-store.js";
 
 // ─── Node kind → color ─────────────────────────────────────
 
@@ -90,10 +91,31 @@ function SpecNode({ data, selected, id }: NodeProps) {
   const instanceInputPorts = d.inputPorts ?? [];
   const instanceOutputPorts = d.outputPorts ?? [];
 
-  // Resolve display name from agentRef (strip path prefix, show just the .agent.md name)
+  // Resolve agent.md data from manifest for this node
+  const promptAssetManifest = useWorkspaceStore((s) => s.promptAssetManifest);
+  const resolvedAgent = d.agentRef && promptAssetManifest
+    ? promptAssetManifest.agents.get(d.agentRef)
+    : undefined;
+
+  // Resolve display name:
+  // - If agentRef is set, show the agent.md name (strip path + .agent.md suffix)
+  // - If agentRef is NOT set, show "kind (spec.label)" — e.g. "agent.main (主 Agent)"
   const agentDisplayName = d.agentRef
-    ? d.agentRef.split("/").pop()?.replace(/\.agent\.md$/, "") ?? d.agentRef
-    : d.label || effectiveKind;
+    ? (resolvedAgent?.name ?? d.agentRef.split("/").pop()?.replace(/\.agent\.md$/, "") ?? d.agentRef)
+    : `${spec?.kind ?? effectiveKind} (${spec?.label ?? effectiveKind})`;
+
+  // Resolve outputKind from agent.md (not from node config)
+  const resolvedOutputKind = resolvedAgent?.outputKind;
+
+  // Resolve model with cascade: node config → agent.md → global default
+  const defaultModelKey = useSettingsStore((s) => s.defaultModelKey);
+  const resolvedModel = (() => {
+    if (d.model) return { source: "node" as const, value: d.model };
+    if (resolvedAgent?.model) return { source: "agent.md" as const, value: resolvedAgent.model };
+    if (defaultModelKey) return { source: "global" as const, value: defaultModelKey };
+    return null;
+  })();
+  const isAgentKind = effectiveKind === "agent" || effectiveKind.startsWith("agent.");
 
   // Read runtime status for this node
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
@@ -172,6 +194,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
 
   return (
     <div
+      data-node-kind={effectiveKind}
+      className={`af-node af-node--${effectiveKind.replace(/\./g, "-")}`}
       style={{
         padding: `${SPACING.sm}px ${SPACING.md}px`,
         borderRadius: 6,
@@ -279,8 +303,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {agentDisplayName}
       </div>
-      {/* Output type badge */}
-      {d.outputKind && d.outputKind !== "text" && (
+      {/* Output type badge — derived from agent.md */}
+      {resolvedOutputKind && resolvedOutputKind !== "text" && (
         <div
           style={{
             display: "inline-block",
@@ -293,11 +317,11 @@ function SpecNode({ data, selected, id }: NodeProps) {
             whiteSpace: "nowrap",
           }}
         >
-          {d.outputKind}
+          {resolvedOutputKind}
         </div>
       )}
-      {/* Model name (small) */}
-      {d.model && (
+      {/* Model name (small) — show resolved model from cascade */}
+      {resolvedModel && (
         <div
           style={{
             fontSize: TYPO.smallFontSize - 1,
@@ -309,11 +333,50 @@ function SpecNode({ data, selected, id }: NodeProps) {
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           }}
         >
-          {d.model
-            ? d.model.includes("/")
-              ? `${d.model.split("/").pop()} (${d.model.split("/")[0]})`
-              : d.model
-            : ""}
+          {resolvedModel.value.includes("/")
+            ? `${resolvedModel.value.split("/").pop()} (${resolvedModel.value.split("/")[0]})`
+            : resolvedModel.value}
+          {resolvedModel.source !== "node" && (
+            <span style={{ opacity: 0.5, marginLeft: 4, fontSize: TYPO.smallFontSize - 2 }}>↳{resolvedModel.source === "agent.md" ? "agent.md" : "全局"}</span>
+          )}
+        </div>
+      )}
+      {/* Warning: no agentRef selected for agent nodes */}
+      {isAgentKind && !d.agentRef && (
+        <div
+          style={{
+            marginTop: 4,
+            padding: "1px 5px",
+            borderRadius: 3,
+            background: "rgba(251, 191, 36, 0.2)",
+            border: "1px solid rgba(251, 191, 36, 0.4)",
+            color: "#fbbf24",
+            fontSize: TYPO.smallFontSize - 1,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          ⚠️ 请选择 agent.md
+        </div>
+      )}
+      {/* Warning: no model available for agent nodes */}
+      {isAgentKind && !resolvedModel && (
+        <div
+          style={{
+            marginTop: 4,
+            padding: "1px 5px",
+            borderRadius: 3,
+            background: "rgba(248, 113, 113, 0.2)",
+            border: "1px solid rgba(248, 113, 113, 0.4)",
+            color: "#f87171",
+            fontSize: TYPO.smallFontSize - 1,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          ⚠️ 请增加全局设置 model
         </div>
       )}
 
@@ -430,43 +493,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
         </div>
       )}
 
-      {/* Port labels (small, below node body) */}
-      {outputDataPorts.length > 0 && (
-        <div
-          style={{
-            fontSize: TYPO.smallFontSize - 1,
-            opacity: 0.6,
-            marginTop: 4,
-            display: "flex",
-            gap: 4,
-            flexWrap: "wrap",
-          }}
-        >
-          {outputDataPorts.map((p) => (
-            <span key={p.portId} style={{ color: portColor(p.dataType) }}>
-              {p.label ?? p.portId}
-            </span>
-          ))}
-        </div>
-      )}
-      {inputDataPorts.length > 0 && (
-        <div
-          style={{
-            fontSize: TYPO.smallFontSize - 1,
-            opacity: 0.6,
-            marginTop: 2,
-            display: "flex",
-            gap: 4,
-            flexWrap: "wrap",
-          }}
-        >
-          {inputDataPorts.map((p) => (
-            <span key={p.portId} style={{ color: portColor(p.dataType) }}>
-              {p.label ?? p.portId}
-            </span>
-          ))}
-        </div>
-      )}
+
     </div>
   );
 }

@@ -664,22 +664,30 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
             </section>
           )}
 
-          {/* Agent Configuration — model + outputKind for agent nodes */}
+          {/* Agent Configuration — model for agent nodes */}
           {isAgentNode && (() => {
             const modelOptions = useSettingsStore.getState().getModelOptions();
             const nodeConfig = selectedNode.config as Record<string, unknown> | undefined;
             const currentModel = typeof nodeConfig?.model === "string" ? nodeConfig.model : "";
-            const currentOutputKind = typeof nodeConfig?.outputKind === "string" ? nodeConfig.outputKind : "text";
-            const outputKindOptions = [
-              { value: "text", label: "文本" },
-              { value: "plan", label: "计划" },
-              { value: "score", label: "评分" },
-              { value: "code", label: "代码" },
-              { value: "judge", label: "判断" },
-              { value: "review", label: "审查" },
-              { value: "artifact", label: "产物" },
-              { value: "decision", label: "决策" },
-            ];
+            const resolvedOutputKind = (() => {
+              if (selectedNode.agentRef && promptAssetManifest?.agents.get(selectedNode.agentRef)) {
+                return promptAssetManifest.agents.get(selectedNode.agentRef)!.outputKind;
+              }
+              return undefined;
+            })();
+            const resolvedModel = (() => {
+              // 1. Node-level explicit model
+              if (currentModel) return { source: "node", value: currentModel };
+              // 2. Agent.md model
+              if (selectedNode.agentRef && promptAssetManifest?.agents.get(selectedNode.agentRef)?.model) {
+                return { source: "agent.md", value: promptAssetManifest.agents.get(selectedNode.agentRef)!.model! };
+              }
+              // 3. Global default model
+              const globalDefault = useSettingsStore.getState().defaultModelKey;
+              if (globalDefault) return { source: "global", value: globalDefault };
+              // No model available
+              return null;
+            })();
             const selectStyle: CSSProperties = {
               width: "100%",
               boxSizing: "border-box",
@@ -695,6 +703,23 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                 <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
                   Configuration
                 </div>
+                {/* No agentRef warning */}
+                {!selectedNode.agentRef && (
+                  <div style={{
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    borderRadius: 6,
+                    background: "rgba(251, 191, 36, 0.1)",
+                    border: "1px solid rgba(251, 191, 36, 0.3)",
+                    color: "#fbbf24",
+                    fontSize: TYPO.smallFontSize,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: SPACING.xs,
+                  }}>
+                    ⚠️ 请选择 agent.md
+                  </div>
+                )}
+                {/* Model selector */}
                 <label style={{ display: "grid", gap: 4 }}>
                   <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>模型</span>
                   <select
@@ -709,19 +734,44 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                       </option>
                     ))}
                   </select>
+                  {resolvedModel && resolvedModel.source !== "node" && (
+                    <span style={{ fontSize: 11, color: TEXT.muted }}>
+                      ↳ {resolvedModel.source === "agent.md" ? "agent.md" : "全局"}默认: {resolvedModel.value.includes("/") ? resolvedModel.value.split("/").pop() : resolvedModel.value}
+                    </span>
+                  )}
                 </label>
-                <label style={{ display: "grid", gap: 4 }}>
-                  <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>输出类型</span>
-                  <select
-                    value={currentOutputKind}
-                    onChange={(event) => updateNodeConfig(flowPath, selectedNode.nodeId, "outputKind", event.currentTarget.value)}
-                    style={selectStyle}
-                  >
-                    {outputKindOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </label>
+                {/* No model warning */}
+                {!resolvedModel && (
+                  <div style={{
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    borderRadius: 6,
+                    background: "rgba(248, 113, 113, 0.1)",
+                    border: "1px solid rgba(248, 113, 113, 0.3)",
+                    color: "#f87171",
+                    fontSize: TYPO.smallFontSize,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: SPACING.xs,
+                  }}>
+                    ⚠️ 请增加全局设置 model
+                  </div>
+                )}
+                {/* Output kind — read-only, from agent.md */}
+                {resolvedOutputKind && (
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary }}>输出类型</span>
+                    <div style={{
+                      padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                      borderRadius: 6,
+                      background: SURFACE.editor,
+                      border: `1px solid ${BORDER.default}`,
+                      fontSize: TYPO.fontSize,
+                      color: TEXT.muted,
+                    }}>
+                      {resolvedOutputKind} ← agent.md
+                    </div>
+                  </label>
+                )}
               </section>
             );
           })()}

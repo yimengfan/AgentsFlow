@@ -2281,23 +2281,12 @@ describe("需求14: Agent 配置参数完整性", () => {
     expect(timeoutIds).toContain("maxCostUsd");
   });
 
-  it("AgentMainSpec outputKind 参数包含扩展的输出类型", () => {
+  it("AgentMainSpec 不包含 outputKind 参数（outputKind 由 agent.md 定义）", () => {
     const spec = new AgentMainSpec();
-    const outputParams = spec.params.filter((p) => p.group === "输出");
-    const outputIds = outputParams.map((p) => p.paramId);
+    const paramIds = spec.params.map((p) => p.paramId);
 
-    expect(outputIds).toContain("outputKind");
-
-    const outputKindParam = spec.params.find((p) => p.paramId === "outputKind");
-    expect(outputKindParam?.paramType).toBe("select");
-    expect(outputKindParam?.options?.some((o) => o.value === "text")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "plan")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "score")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "code")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "judge")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "review")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "artifact")).toBe(true);
-    expect(outputKindParam?.options?.some((o) => o.value === "decision")).toBe(true);
+    // outputKind is now derived from the agent.md manifest, not from node config
+    expect(paramIds).not.toContain("outputKind");
   });
 
   it("AgentSubSpec model 参数同样使用 select 类型，选项由 settings store 动态提供", () => {
@@ -2322,10 +2311,10 @@ describe("需求14: Agent 配置参数完整性", () => {
     expect(approvalParam?.group).toBe("工具策略");
   });
 
-  it("AgentSubSpec 包含 outputKind 参数（与 Main Agent 一致）", () => {
+  it("AgentSubSpec 不包含 outputKind 参数（outputKind 由 agent.md 定义）", () => {
     const spec = new AgentSubSpec();
     const paramIds = spec.params.map((p) => p.paramId);
-    expect(paramIds).toContain("outputKind");
+    expect(paramIds).not.toContain("outputKind");
   });
 
   it("AgentMainSpec 和 AgentSubSpec 的模型参数选项均为空（动态填充）", () => {

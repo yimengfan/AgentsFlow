@@ -368,6 +368,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       inputPorts: [...spec.inputPorts],
       outputPorts: [...spec.outputPorts],
       params: [...spec.params],
+      // Set agentRef from spec's presetAgentRef (e.g. "main-agent", "sub-agent")
+      ...(spec.presetAgentRef ? { agentRef: spec.presetAgentRef } : {}),
     };
 
     // Add position to layout
@@ -670,9 +672,9 @@ graph:
       params: []
     - nodeId: main-prompt
       nodeKind: agent.main
-      label: 主Agent - Plan
+      label: 主 Agent
       category: Agent/Main
-      agentId: main-agent
+      agentRef: main-agent
       config:
         turnMode: plan
         userPrompt: 请根据用户输入生成一个简洁可执行的计划，输出重点步骤。
@@ -693,9 +695,9 @@ graph:
       params: []
     - nodeId: sub-execute
       nodeKind: agent.sub
-      label: 子Agent - 执行
+      label: 子 Agent
       category: Agent/Sub
-      agentId: sub-agent
+      agentRef: sub-agent
       config:
         turnMode: normal
         systemPrompt: 按照计划步骤执行任务。
@@ -714,9 +716,9 @@ graph:
       params: []
     - nodeId: main-evaluate
       nodeKind: agent.main
-      label: 主Agent - 评分
+      label: 主 Agent
       category: Agent/Main
-      agentId: main-agent
+      agentRef: main-agent
       config:
         turnMode: evaluate
         evaluatePrompt: >-
