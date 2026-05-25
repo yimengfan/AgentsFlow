@@ -205,8 +205,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
         color: "#fff",
         fontSize: TYPO.fontSize,
         fontWeight: 500,
-        width: isHorizontal ? 180 : 140,
-        height: 68,
+        width: isHorizontal ? 200 : 160,
+        height: 88,
         overflow: "hidden",
         position: "relative",
         border: statusBorderColor !== "transparent" ? `2px solid ${statusBorderColor}` : undefined,
@@ -294,7 +294,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec ? `${spec.kind}(${spec.label})` : effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) */}
+      {/* Agent name (slightly larger, prominent) — hidden when warning shown */}
+      {!(isAgentKind && !d.agentRef) && (
       <div
         style={{
           fontSize: TYPO.fontSize + 2,
@@ -306,12 +307,13 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {agentDisplayName}
       </div>
-      {/* Warning: no agent selected — absolute overlay */}
+      )}
+      {/* Warning: no agent selected — absolute overlay, hides name/output/model below */}
       {isAgentKind && !d.agentRef && (
         <div
           style={{
             position: "absolute",
-            top: 18,
+            top: 24,
             left: SPACING.md,
             right: SPACING.md,
             fontSize: TYPO.fontSize - 1,
@@ -330,12 +332,12 @@ function SpecNode({ data, selected, id }: NodeProps) {
           ⚠️ 请选择 agent.md
         </div>
       )}
-      {/* Output type badge — absolute overlay */}
-      {isAgentKind && resolvedOutputKind && (
+      {/* Output type badge — always show with placeholder */}
+      {isAgentKind && !(isAgentKind && !d.agentRef) && (
         <div
           style={{
             position: "absolute",
-            top: 36,
+            top: 42,
             left: SPACING.md,
             padding: "1px 6px",
             borderRadius: 4,
@@ -343,17 +345,18 @@ function SpecNode({ data, selected, id }: NodeProps) {
             fontWeight: 500,
             background: "rgba(255,255,255,0.18)",
             whiteSpace: "nowrap",
+            opacity: resolvedOutputKind ? 1 : 0.4,
           }}
         >
-          📤 {resolvedOutputKind}
+          📤 {resolvedOutputKind || "—"}
         </div>
       )}
-      {/* Model name — absolute overlay */}
-      {resolvedModel && (
+      {/* Model name — absolute overlay, hidden when no agent ref */}
+      {resolvedModel && !(isAgentKind && !d.agentRef) && (
         <div
           style={{
             position: "absolute",
-            top: 50,
+            top: 58,
             left: SPACING.md,
             right: SPACING.md,
             fontSize: TYPO.smallFontSize - 1,
@@ -373,8 +376,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
         </div>
       )}
 
-      {/* Warning: no model available for agent nodes */}
-      {isAgentKind && !resolvedModel && (
+      {/* Warning: no model available for agent nodes — hidden when no agent ref */}
+      {isAgentKind && !resolvedModel && !(!d.agentRef) && (
         <div
           style={{
             position: "absolute",
