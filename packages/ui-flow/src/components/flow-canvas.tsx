@@ -294,7 +294,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec ? `${spec.kind}(${spec.label})` : effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) — hidden when warning shown */}
+      {/* Agent name (slightly larger, prominent) — hidden when no agentRef (would be undefined) */}
       {!(isAgentKind && !d.agentRef) && (
       <div
         style={{
@@ -308,14 +308,10 @@ function SpecNode({ data, selected, id }: NodeProps) {
         {agentDisplayName}
       </div>
       )}
-      {/* Warning: no agent selected — absolute overlay, hides name/output/model below */}
+      {/* Warning: no agent selected — positioned where agent name would be */}
       {isAgentKind && !d.agentRef && (
         <div
           style={{
-            position: "absolute",
-            top: 24,
-            left: SPACING.md,
-            right: SPACING.md,
             fontSize: TYPO.fontSize - 1,
             fontWeight: 500,
             lineHeight: "16px",
@@ -333,12 +329,9 @@ function SpecNode({ data, selected, id }: NodeProps) {
         </div>
       )}
       {/* Output type badge — always show with placeholder */}
-      {isAgentKind && !(isAgentKind && !d.agentRef) && (
+      {isAgentKind && (
         <div
           style={{
-            position: "absolute",
-            top: 42,
-            left: SPACING.md,
             padding: "1px 6px",
             borderRadius: 4,
             fontSize: TYPO.smallFontSize - 1,
@@ -351,14 +344,10 @@ function SpecNode({ data, selected, id }: NodeProps) {
           📤 {resolvedOutputKind || "—"}
         </div>
       )}
-      {/* Model name — absolute overlay, hidden when no agent ref */}
-      {resolvedModel && !(isAgentKind && !d.agentRef) && (
+      {/* Model name */}
+      {resolvedModel && (
         <div
           style={{
-            position: "absolute",
-            top: 58,
-            left: SPACING.md,
-            right: SPACING.md,
             fontSize: TYPO.smallFontSize - 1,
             opacity: 0.6,
             whiteSpace: "nowrap",
@@ -376,8 +365,8 @@ function SpecNode({ data, selected, id }: NodeProps) {
         </div>
       )}
 
-      {/* Warning: no model available for agent nodes — hidden when no agent ref */}
-      {isAgentKind && !resolvedModel && !(!d.agentRef) && (
+      {/* Warning: no model available for agent nodes */}
+      {isAgentKind && !resolvedModel && (
         <div
           style={{
             position: "absolute",
