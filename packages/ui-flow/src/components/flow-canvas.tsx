@@ -223,6 +223,10 @@ function SpecNode({ data, selected, id }: NodeProps) {
         height: 88,
         overflow: "hidden",
         position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: 2,
         border: statusBorderColor !== "transparent" ? `2px solid ${statusBorderColor}` : undefined,
         ...(statusPulse ? { animation: "af-pulse-border 1.5s ease-in-out infinite" } : {}),
       }}
@@ -299,8 +303,7 @@ function SpecNode({ data, selected, id }: NodeProps) {
       <div
         style={{
           fontSize: TYPO.smallFontSize - 1,
-          opacity: 0.65,
-          marginBottom: 2,
+          opacity: 0.55,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
