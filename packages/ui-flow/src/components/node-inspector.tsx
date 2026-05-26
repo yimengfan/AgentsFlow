@@ -1,11 +1,13 @@
 import type { CSSProperties, JSX } from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DataTrace, ErrorTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition, NodeDef, ParamDef, PromptAssetManifest, PromptSegment, ProviderPromptPackage } from "@agentsflow/flow-schema";
+import { usePlatform } from "@agentsflow/platform-adapter";
+import { useWorkspaceTreeStore } from "../store/workspace-tree-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useRuntimeStore, type PromptSourceRef } from "../store/runtime-store.js";
 import { useSettingsStore } from "../store/settings-store.js";
-import { BORDER, SPACING, SURFACE, TEXT, TYPO } from "./workbench-tokens.js";
+import { BORDER, SPACING, SURFACE, TEXT, TYPO, ACCENT } from "./workbench-tokens.js";
 import { getAgentDropdownItems, assemblePromptPackage } from "@agentsflow/prompt-asset-resolver";
 
 export interface YamlRevealTarget {
@@ -165,6 +167,86 @@ function renderDataTrace(
         {valuePreview}
       </div>
     </button>
+  );
+}
+
+// ─── Source File Viewer ────────────────────────────────────
+
+interface SourceFileViewerProps {
+  readonly filePath: string;
+  readonly content: string;
+  readonly onClose: () => void;
+}
+
+function SourceFileViewer({ filePath, content, onClose }: SourceFileViewerProps): JSX.Element {
+  const fileName = filePath.split("/").pop() ?? filePath;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: SURFACE.sidebar,
+        display: "flex",
+        flexDirection: "column",
+        zIndex: 10,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: SPACING.sm,
+          padding: `${SPACING.sm}px ${SPACING.md}px`,
+          borderBottom: `1px solid ${BORDER.default}`,
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 14 }}>📄</span>
+        <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {fileName}
+        </span>
+        <span style={{ fontSize: 11, color: TEXT.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+          {filePath}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            background: "transparent",
+            border: `1px solid ${BORDER.default}`,
+            borderRadius: 4,
+            color: TEXT.secondary,
+            cursor: "pointer",
+            fontSize: 16,
+            lineHeight: 1,
+            padding: "2px 8px",
+          }}
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: SPACING.md }}>
+        <pre
+          style={{
+            margin: 0,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: TYPO.smallFontSize,
+            color: TEXT.muted,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            lineHeight: 1.5,
+          }}
+        >
+          {content}
+        </pre>
+      </div>
+    </div>
   );
 }
 
@@ -397,6 +479,28 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
   }, [isAgentNode, selectedNode, promptAssetManifest, selectedNodeState]);
 
   const [promptPreviewExpanded, setPromptPreviewExpanded] = useState(false);
+  const [sourceFileViewer, setSourceFileViewer] = useState<{ readonly filePath: string; readonly content: string } | null>(null);
+
+  const platform = usePlatform();
+  const rootPath = useWorkspaceTreeStore((s) => s.rootPath);
+
+  // Handle source file reveal — reads the file from disk and shows in viewer
+  const handleRevealSourceFile = useCallback(async (filePath: string) => {
+    if (!rootPath) return;
+    // Resolve the path: if it starts with .agents-flow/ it's relative to workspace root
+    const absolutePath = filePath.startsWith("/") ? filePath : `${rootPath}/${filePath}`;
+    try {
+      const result = await platform.workspace.readFile(absolutePath);
+      if (result && typeof result === "object" && "content" in result) {
+        setSourceFileViewer({ filePath, content: result.content });
+      } else {
+        setSourceFileViewer({ filePath, content: `(File not found: ${filePath})` });
+      }
+    } catch {
+      // File may not exist on disk
+      setSourceFileViewer({ filePath, content: `(Error reading file: ${filePath})` });
+    }
+  }, [rootPath, platform]);
 
   // If an edge is selected, show edge I/O inspector
   if (selectedEdgeId && selectedEdge && !selectedNodeId) {
@@ -525,6 +629,7 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
   return (
     <div
       style={{
+        position: "relative",
         height: "100%",
         background: SURFACE.sidebar,
         borderLeft: `1px solid ${BORDER.default}`,
@@ -799,11 +904,8 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                       key={`seg:${idx}:${seg.scope}:${seg.label}`}
                       type="button"
                       onClick={() => {
-                        if (canTrack && onRevealYaml) {
-                          onRevealYaml({
-                            scope: seg.scope === "agent-body" || seg.scope === "global-system-prompt" ? "agent" : "node",
-                            targetId: seg.sourcePath,
-                          });
+                        if (canTrack) {
+                          handleRevealSourceFile(seg.sourcePath);
                         }
                       }}
                       style={{
@@ -925,8 +1027,57 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
               </div>
             </div>
           </section>
+
+          {/* Memory Files — per-node serialized files from .agents-flow/memory/ */}
+          {selectedNodeState && selectedNodeState.memoryFilePaths && selectedNodeState.memoryFilePaths.length > 0 && (
+            <section style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, textTransform: "uppercase", letterSpacing: 1 }}>
+                Memory Files
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {selectedNodeState.memoryFilePaths.map((memFile) => {
+                  const fileName = memFile.split("/").pop() ?? memFile;
+                  const fileIcon = fileName.endsWith(".json") ? "📋" : fileName.endsWith(".md") ? "📝" : "📄";
+                  return (
+                    <button
+                      key={memFile}
+                      type="button"
+                      onClick={() => handleRevealSourceFile(memFile)}
+                      style={{
+                        textAlign: "left",
+                        width: "100%",
+                        background: SURFACE.editor,
+                        color: TEXT.primary,
+                        border: `1px solid ${BORDER.default}`,
+                        borderRadius: 6,
+                        padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: SPACING.xs,
+                      }}
+                    >
+                      <span>{fileIcon}</span>
+                      <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, fontWeight: 500 }}>{fileName}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 10, color: TEXT.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                        {memFile}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
       )}
+      {/* Source File Viewer Overlay */}
+      {sourceFileViewer ? (
+        <SourceFileViewer
+          filePath={sourceFileViewer.filePath}
+          content={sourceFileViewer.content}
+          onClose={() => setSourceFileViewer(null)}
+        />
+      ) : null}
     </div>
   );
 }

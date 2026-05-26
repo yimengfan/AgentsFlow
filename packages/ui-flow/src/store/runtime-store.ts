@@ -51,6 +51,8 @@ export interface NodeDebugState {
   readonly durationMs?: number;
   /** Structured error information if the node failed */
   readonly errorTrace?: ErrorTrace;
+  /** Paths to serialized memory files under .agents-flow/memory/{runId}/ */
+  readonly memoryFilePaths?: readonly string[];
 }
 
 export interface RunTimelineEntry {
@@ -290,6 +292,38 @@ function nextNodeStatus(current: NodeDebugState["status"], nodeId: string, event
   return current;
 }
 
+/**
+ * Build the list of memory file paths that should exist for a completed/failed node.
+ * Paths are relative to the workspace root, matching the directory structure:
+ *   .agents-flow/memory/{runId}/{turnIndex}/{nodeId}/
+ */
+function buildMemoryFilePaths(
+  runId: string,
+  turnIndex: number,
+  nodeState: {
+    readonly nodeId: string;
+    readonly reasoningText?: string;
+    readonly toolCalls?: readonly ToolCallSummary[];
+    readonly promptSources: readonly PromptSourceRef[];
+  },
+): readonly string[] {
+  const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeState.nodeId}`;
+  const paths: string[] = [
+    `${basePath}/node-input.json`,
+    `${basePath}/node-output.json`,
+  ];
+  if (nodeState.reasoningText) {
+    paths.push(`${basePath}/ai-thinking.md`);
+  }
+  if (nodeState.toolCalls && nodeState.toolCalls.length > 0) {
+    paths.push(`${basePath}/tool-calls.json`);
+  }
+  if (nodeState.promptSources.length > 0) {
+    paths.push(`${basePath}/prompt-sources.json`);
+  }
+  return paths;
+}
+
 function buildNodeStates(
   flow: FlowDefinition,
   ctx: RunContext | undefined,
@@ -297,8 +331,14 @@ function buildNodeStates(
   previousNodeStates: ReadonlyMap<string, NodeDebugState>,
   event: AgentEvent,
   manifest?: PromptAssetManifest | null,
+  timeline?: readonly RunTimelineEntry[],
 ): ReadonlyMap<string, NodeDebugState> {
   const nextStates = new Map(previousNodeStates);
+
+  // Count how many completed/failed timeline entries exist so far for turn indexing
+  const completedTurnCount = timeline
+    ? timeline.filter((e) => e.status === "completed" || e.status === "failed").length
+    : 0;
 
   for (const node of flow.graph.nodes) {
     const previous = nextStates.get(node.nodeId);
@@ -335,12 +375,32 @@ function buildNodeStates(
       }
     }
 
+    // Determine current status
+    const status = nextNodeStatus(previous?.status ?? "idle", node.nodeId, event);
+
+    // Compute memoryFilePaths: set on first completion/failure, preserved afterward
+    let memoryFilePaths: readonly string[] | undefined;
+    if ((status === "completed" || status === "failed") && previous?.status !== "completed" && previous?.status !== "failed") {
+      // The turn index is the count of completed turns before this one
+      const turnIndex = completedTurnCount;
+      memoryFilePaths = buildMemoryFilePaths(event.runId, turnIndex, {
+        nodeId: node.nodeId,
+        ...(output?.reasoningText !== undefined ? { reasoningText: output.reasoningText } : {}),
+        ...(output?.toolCalls !== undefined ? { toolCalls: output.toolCalls } : {}),
+        promptSources: buildPromptSources(agentDef, node, runInput, manifest),
+      });
+    } else if (previous?.memoryFilePaths && previous.memoryFilePaths.length > 0) {
+      // Preserve existing memory file paths from previous state
+      memoryFilePaths = previous.memoryFilePaths;
+    }
+
+    // Build the node state
     nextStates.set(node.nodeId, {
       nodeId: node.nodeId,
       label: node.label ?? node.nodeId,
       nodeKind: node.nodeKind ?? node.nodeType ?? "agent",
       ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
-      status: nextNodeStatus(previous?.status ?? "idle", node.nodeId, event),
+      status,
       inputs: buildNodeInputs(flow, ctx, node, runInput),
       portOutputs: ctx ? toRecord(ctx.getNodePortValues(node.nodeId)) : {},
       ...(output?.finalText !== undefined ? { finalText: output.finalText } : {}),
@@ -354,22 +414,20 @@ function buildNodeStates(
       ...(output?.warnings !== undefined ? { warnings: output.warnings } : {}),
       promptSources: buildPromptSources(agentDef, node, runInput, manifest),
       ...(lastEvent !== undefined ? { lastEvent } : {}),
-      // Trace data: prefer RunContext traces, fall back to event payload extraction
       inputTraces: ctx?.getNodeTrace(node.nodeId)?.inputTraces ?? previous?.inputTraces ?? [],
       outputTraces: ctx?.getNodeTrace(node.nodeId)?.outputTraces ?? previous?.outputTraces ?? [],
-      // Duration from event payload or RunContext trace
       ...(event.nodeId === node.nodeId && event.eventType === "turn_completed" && typeof event.payload.durationMs === "number"
         ? { durationMs: event.payload.durationMs as number }
         : previous?.durationMs !== undefined ? { durationMs: previous.durationMs } : {}),
       ...(event.nodeId === node.nodeId && event.eventType === "turn_failed" && typeof event.payload.durationMs === "number"
         ? { durationMs: event.payload.durationMs as number }
         : {}),
-      // Error trace from event payload or RunContext trace
       ...(event.nodeId === node.nodeId && event.eventType === "turn_failed" && event.payload.errorTrace
         ? { errorTrace: event.payload.errorTrace as ErrorTrace }
         : ctx?.getNodeTrace(node.nodeId)?.errorTrace !== undefined
           ? { errorTrace: ctx.getNodeTrace(node.nodeId)!.errorTrace }
           : previous?.errorTrace !== undefined ? { errorTrace: previous.errorTrace } : {}),
+      ...(memoryFilePaths !== undefined ? { memoryFilePaths } : {}),
     });
   }
 
@@ -560,7 +618,7 @@ function buildRunRecord(
   const previousEvents = previous?.events ?? [];
   const previousStates = previous?.nodeStates ?? new Map<string, NodeDebugState>();
   const previousTimeline = previous?.timeline ?? [];
-  const nextNodeStates = buildNodeStates(flow, ctx, runInput, previousStates, event, manifest);
+  const nextNodeStates = buildNodeStates(flow, ctx, runInput, previousStates, event, manifest, previousTimeline);
   const timelineEntry = buildTimelineEntry(flow, ctx, runInput, event, manifest);
 
   // When a timeline entry with the same entryId already exists (streaming updates),

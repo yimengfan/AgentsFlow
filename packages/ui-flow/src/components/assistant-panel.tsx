@@ -793,21 +793,131 @@ interface SessionMeta {
   readonly hasHistory: boolean;
 }
 
+/** Per-turn file metadata discovered from the memory directory structure. */
+interface TurnFileMeta {
+  readonly fileName: string;
+  readonly filePath: string; // full path for readFile
+  readonly label: string; // human-readable label, e.g. "Node Input", "AI Thinking"
+  readonly icon: string; // emoji icon for display
+}
+
+/** Per-turn detail — one turn directory containing node subdirectories. */
+interface TurnDetail {
+  readonly turnIndex: number;
+  readonly nodeId: string;
+  readonly nodeLabel: string;
+  readonly nodeKind: string;
+  readonly status: string; // "completed" or "failed"
+  readonly files: readonly TurnFileMeta[];
+}
+
 // ─── Session persistence hook ──────────────────────────────
 
 function useSessionPersistence(run: LocalRunRecord | null) {
   const platform = usePlatform();
   const rootPath = useWorkspaceTreeStore((s) => s.rootPath);
   const savedRunId = useRef<string | null>(null);
+  const savedTurnKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!run || !rootPath) return;
+
+    const memoryBase = `${rootPath}/.agents-flow/memory/${run.runId}`;
+
+    // ── Per-node per-turn file serialization ──
+    // Write individual files for each completed/failed node turn.
+    // Directory structure: .agents-flow/memory/{runId}/{turnIndex}/{nodeId}/
+    const nodeStates = [...run.nodeStates.values()];
+    for (const ns of nodeStates) {
+      if (ns.status !== "completed" && ns.status !== "failed") continue;
+
+      // Determine turn index: find the timeline entry for this node's completion
+      const timelineIdx = run.timeline.findIndex(
+        (e) => e.nodeId === ns.nodeId && (e.status === "completed" || e.status === "failed"),
+      );
+      // Use timeline index as turn number (0-based); if not found, use node position
+      const turnIndex = timelineIdx >= 0 ? timelineIdx : run.timeline.length;
+      const turnKey = `${run.runId}:${turnIndex}:${ns.nodeId}`;
+
+      // Skip if we've already written files for this node turn
+      if (savedTurnKeys.current.has(turnKey)) continue;
+      savedTurnKeys.current.add(turnKey);
+
+      const nodeDir = `${memoryBase}/${turnIndex}/${ns.nodeId}`;
+
+      // Write node-input.json
+      const inputData = {
+        nodeId: ns.nodeId,
+        label: ns.label,
+        nodeKind: ns.nodeKind,
+        agentId: ns.agentId,
+        inputs: ns.inputs,
+        inputTraces: ns.inputTraces,
+      };
+      platform.workspace.createFile(
+        `${nodeDir}/node-input.json`,
+        JSON.stringify(inputData, null, 2),
+      ).catch(() => {});
+
+      // Write node-output.json
+      const outputData = {
+        nodeId: ns.nodeId,
+        status: ns.status,
+        finalText: ns.finalText,
+        structuredOutput: ns.structuredOutput,
+        portOutputs: ns.portOutputs,
+        outputTraces: ns.outputTraces,
+        durationMs: ns.durationMs,
+        errorTrace: ns.errorTrace,
+        usage: ns.usage,
+        warnings: ns.warnings,
+      };
+      platform.workspace.createFile(
+        `${nodeDir}/node-output.json`,
+        JSON.stringify(outputData, null, 2),
+      ).catch(() => {});
+
+      // Write ai-thinking.md (only if reasoningText exists)
+      if (ns.reasoningText) {
+        platform.workspace.createFile(
+          `${nodeDir}/ai-thinking.md`,
+          ns.reasoningText,
+        ).catch(() => {});
+      }
+
+      // Write tool-calls.json (only if toolCalls exist)
+      if (ns.toolCalls && ns.toolCalls.length > 0) {
+        platform.workspace.createFile(
+          `${nodeDir}/tool-calls.json`,
+          JSON.stringify(ns.toolCalls, null, 2),
+        ).catch(() => {});
+      }
+
+      // Write prompt-sources.json
+      if (ns.promptSources.length > 0) {
+        const promptSourceData = ns.promptSources.map((ps) => ({
+          scope: ps.scope,
+          label: ps.label,
+          valuePreview: ps.value
+            ? (ps.value.length > 200 ? `${ps.value.slice(0, 200)}…` : ps.value)
+            : undefined,
+          sourcePath: ps.sourcePath,
+          targetId: ps.targetId,
+          field: ps.field,
+        }));
+        platform.workspace.createFile(
+          `${nodeDir}/prompt-sources.json`,
+          JSON.stringify(promptSourceData, null, 2),
+        ).catch(() => {});
+      }
+    }
+
+    // ── Session-level metadata (written when run finishes) ──
     // Only save when run is completed or failed, and we haven't saved this runId yet
     if ((run.state !== "completed" && run.state !== "failed") || savedRunId.current === run.runId) return;
 
     savedRunId.current = run.runId;
 
-    const sessionDir = `${rootPath}/.agents-flow/memory/${run.runId}`;
     const sessionData = {
       runId: run.runId,
       flowPath: run.flowPath,
@@ -839,9 +949,9 @@ function useSessionPersistence(run: LocalRunRecord | null) {
       error: run.error,
     };
 
-    // Fire-and-forget: write session to disk
+    // Fire-and-forget: write session metadata to disk
     platform.workspace.createFile(
-      `${sessionDir}/session.json`,
+      `${memoryBase}/session.json`,
       JSON.stringify(sessionData, null, 2),
     ).catch(() => {
       // Session persistence is best-effort; don't block UI on failure
@@ -857,12 +967,29 @@ function useSessionHistory(flowPath: string | null) {
   const [sessions, setSessions] = useState<readonly SessionMeta[]>([]);
   const [loadedSessionId, setLoadedSessionId] = useState<string | null>(null);
   const [loadedTimeline, setLoadedTimeline] = useState<readonly RunTimelineEntry[]>([]);
+  const [sessionTurns, setSessionTurns] = useState<Map<string, readonly TurnDetail[]>>(new Map());
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [viewingFile, setViewingFile] = useState<{ filePath: string; content: string } | null>(null);
+
+  // Helper: map file name to human-readable label and icon
+  const fileMeta = useCallback((fileName: string, fullPath: string): TurnFileMeta => {
+    switch (fileName) {
+      case "node-input.json": return { fileName, filePath: fullPath, label: "Node Input", icon: "📥" };
+      case "node-output.json": return { fileName, filePath: fullPath, label: "Node Output", icon: "📤" };
+      case "ai-thinking.md": return { fileName, filePath: fullPath, label: "AI Thinking", icon: "💭" };
+      case "tool-calls.json": return { fileName, filePath: fullPath, label: "Tool Calls", icon: "🔧" };
+      case "prompt-sources.json": return { fileName, filePath: fullPath, label: "Prompt Sources", icon: "📝" };
+      default: return { fileName, filePath: fullPath, label: fileName, icon: "📄" };
+    }
+  }, []);
 
   // Refresh session list when flowPath changes
   useEffect(() => {
     // Always reset history state when the flow changes
     setLoadedTimeline([]);
     setLoadedSessionId(null);
+    setSessionTurns(new Map());
+    setExpandedSessionId(null);
 
     if (!flowPath || !rootPath) {
       setSessions([]);
@@ -918,6 +1045,98 @@ function useSessionHistory(flowPath: string | null) {
     });
   }, [flowPath, rootPath, platform]);
 
+  // Load per-turn details for a session by scanning the memory directory
+  const loadSessionTurns = useCallback((sessionId: string) => {
+    if (!rootPath) return;
+    const sessionDir = `${rootPath}/.agents-flow/memory/${sessionId}`;
+
+    platform.workspace.readDir(sessionDir).then((turnEntries) => {
+      const turnDirEntries = turnEntries.filter((e) => e.isDirectory && /^\d+$/.test(e.name));
+      // Sort by turn index
+      turnDirEntries.sort((a, b) => parseInt(a.name, 10) - parseInt(b.name, 10));
+
+      const turnPromises = turnDirEntries.map(async (turnEntry) => {
+        const turnIndex = parseInt(turnEntry.name, 10);
+        const turnDir = `${sessionDir}/${turnEntry.name}`;
+
+        // List node subdirectories within this turn
+        let nodeEntries: readonly { name: string; isDirectory: boolean }[];
+        try {
+          nodeEntries = await platform.workspace.readDir(turnDir);
+        } catch {
+          return [];
+        }
+
+        const nodeTurnPromises = nodeEntries
+          .filter((ne) => ne.isDirectory)
+          .map(async (nodeEntry): Promise<TurnDetail | null> => {
+            const nodeDir = `${turnDir}/${nodeEntry.name}`;
+
+            // Try to read node-output.json to get node metadata
+            let nodeLabel = nodeEntry.name;
+            let nodeKind = "agent";
+            let nodeStatus = "completed";
+            try {
+              const outputFile = await platform.workspace.readFile(`${nodeDir}/node-output.json`);
+              if (outputFile) {
+                const outputData = JSON.parse(outputFile.content) as {
+                  status?: string;
+                };
+                nodeStatus = outputData.status ?? "completed";
+              }
+            } catch { /* ignore */ }
+
+            try {
+              const inputFile = await platform.workspace.readFile(`${nodeDir}/node-input.json`);
+              if (inputFile) {
+                const inputData = JSON.parse(inputFile.content) as {
+                  label?: string;
+                  nodeKind?: string;
+                };
+                nodeLabel = inputData.label ?? nodeEntry.name;
+                nodeKind = inputData.nodeKind ?? "agent";
+              }
+            } catch { /* ignore */ }
+
+            // List files within the node directory
+            let fileEntries: readonly { name: string; isDirectory: boolean }[];
+            try {
+              fileEntries = await platform.workspace.readDir(nodeDir);
+            } catch {
+              return null;
+            }
+
+            const files = fileEntries
+              .filter((fe) => !fe.isDirectory)
+              .map((fe) => fileMeta(fe.name, `${nodeDir}/${fe.name}`));
+
+            return {
+              turnIndex,
+              nodeId: nodeEntry.name,
+              nodeLabel,
+              nodeKind,
+              status: nodeStatus,
+              files,
+            } as TurnDetail;
+          });
+
+        const nodeTurns = await Promise.all(nodeTurnPromises);
+        return nodeTurns.filter((t): t is TurnDetail => t !== null);
+      });
+
+      Promise.all(turnPromises).then((allTurns) => {
+        const flatTurns = allTurns.flat().sort((a, b) => a.turnIndex - b.turnIndex);
+        setSessionTurns((prev) => {
+          const next = new Map(prev);
+          next.set(sessionId, flatTurns);
+          return next;
+        });
+      });
+    }).catch(() => {
+      // Session directory may not exist or be unreadable
+    });
+  }, [rootPath, platform, fileMeta]);
+
   // Load a session's timeline for display
   const loadSession = useCallback((sessionId: string) => {
     if (!rootPath) return;
@@ -964,7 +1183,35 @@ function useSessionHistory(flowPath: string | null) {
     setLoadedTimeline([]);
   }, []);
 
-  return { sessions, loadedSessionId, loadedTimeline, loadSession, clearLoadedSession };
+  // Handle clicking a file in the turn detail — read and display in viewer
+  const handleViewFile = useCallback((filePath: string) => {
+    platform.workspace.readFile(filePath).then((fileContent) => {
+      if (fileContent) {
+        setViewingFile({ filePath, content: fileContent.content });
+      }
+    }).catch(() => {
+      // File may not exist
+    });
+  }, [platform]);
+
+  const clearViewingFile = useCallback(() => {
+    setViewingFile(null);
+  }, []);
+
+  return {
+    sessions,
+    loadedSessionId,
+    loadedTimeline,
+    sessionTurns,
+    expandedSessionId,
+    viewingFile,
+    loadSession,
+    clearLoadedSession,
+    loadSessionTurns,
+    setExpandedSessionId,
+    handleViewFile,
+    clearViewingFile,
+  };
 }
 
 // ─── Main panel ────────────────────────────────────────────
@@ -1077,8 +1324,20 @@ function AssistantChat() {
   useSessionPersistence(latestRun);
 
   // Session history
-  const { sessions, loadedSessionId, loadedTimeline, loadSession, clearLoadedSession } =
-    useSessionHistory(selectedFlowPath);
+  const {
+    sessions,
+    loadedSessionId,
+    loadedTimeline,
+    sessionTurns,
+    expandedSessionId,
+    viewingFile,
+    loadSession,
+    clearLoadedSession,
+    loadSessionTurns,
+    setExpandedSessionId,
+    handleViewFile,
+    clearViewingFile,
+  } = useSessionHistory(selectedFlowPath);
 
   const [userPrompt, setUserPrompt] = useState("");
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
@@ -1167,7 +1426,7 @@ function AssistantChat() {
   }, [doc?.flow]);
 
   return (
-    <>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       {/* Flow selector + session management bar */}
       <div
         style={{
@@ -1253,8 +1512,8 @@ function AssistantChat() {
                 background: SURFACE.sidebar,
                 border: `1px solid ${BORDER.default}`,
                 borderRadius: 4,
-                minWidth: 220,
-                maxHeight: 300,
+                minWidth: 280,
+                maxHeight: 400,
                 overflow: "auto",
                 boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
               }}
@@ -1264,43 +1523,164 @@ function AssistantChat() {
                   No session history
                 </div>
               ) : (
-                sessions.map((session) => (
-                  <div
-                    key={session.runId}
-                    onClick={() => {
-                      loadSession(session.runId);
-                      setSessionPickerOpen(false);
-                    }}
-                    style={{
-                      padding: `${SPACING.xs}px ${SPACING.sm}px`,
-                      cursor: "pointer",
-                      background: loadedSessionId === session.runId ? SURFACE.hover : "transparent",
-                      color: loadedSessionId === session.runId ? TEXT.primary : TEXT.secondary,
-                      fontSize: TYPO.smallFontSize,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      transition: "background 150ms",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (loadedSessionId !== session.runId) {
-                        (e.currentTarget as HTMLDivElement).style.background = SURFACE.hover;
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (loadedSessionId !== session.runId) {
-                        (e.currentTarget as HTMLDivElement).style.background = "transparent";
-                      }
-                    }}
-                  >
-                    <span>
-                      {session.runId.slice(0, 8)} · {new Date(session.startedAt).toLocaleString()}
-                    </span>
-                    <span style={{ color: statusColor(session.state === "completed" ? "completed" : session.state === "failed" ? "failed" : "idle") }}>
-                      {session.state}
-                    </span>
-                  </div>
-                ))
+                sessions.map((session) => {
+                  const isExpanded = expandedSessionId === session.runId;
+                  const turns = sessionTurns.get(session.runId);
+                  return (
+                    <div key={session.runId}>
+                      {/* Session header row */}
+                      <div
+                        style={{
+                          padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                          cursor: "pointer",
+                          background: loadedSessionId === session.runId ? SURFACE.hover : "transparent",
+                          color: loadedSessionId === session.runId ? TEXT.primary : TEXT.secondary,
+                          fontSize: TYPO.smallFontSize,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          transition: "background 150ms",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (loadedSessionId !== session.runId) {
+                            (e.currentTarget as HTMLDivElement).style.background = SURFACE.hover;
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (loadedSessionId !== session.runId) {
+                            (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                          }
+                        }}
+                      >
+                        <span
+                          onClick={() => {
+                            loadSession(session.runId);
+                            setSessionPickerOpen(false);
+                          }}
+                          style={{ flex: 1, cursor: "pointer" }}
+                        >
+                          {session.runId.slice(0, 8)} · {new Date(session.startedAt).toLocaleString()}
+                        </span>
+                        <span
+                          style={{
+                            color: statusColor(session.state === "completed" ? "completed" : session.state === "failed" ? "failed" : "idle"),
+                            marginRight: SPACING.xs,
+                          }}
+                        >
+                          {session.state}
+                        </span>
+                        {/* Expand button for turn details */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isExpanded) {
+                              setExpandedSessionId(null);
+                            } else {
+                              setExpandedSessionId(session.runId);
+                              if (!sessionTurns.has(session.runId)) {
+                                loadSessionTurns(session.runId);
+                              }
+                            }
+                          }}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: TEXT.muted,
+                            cursor: "pointer",
+                            fontSize: 10,
+                            padding: "0 2px",
+                          }}
+                        >
+                          {isExpanded ? "▼" : "▶"}
+                        </button>
+                      </div>
+
+                      {/* Expanded turn details */}
+                      {isExpanded && (
+                        <div style={{
+                          paddingLeft: SPACING.md,
+                          paddingRight: SPACING.sm,
+                          paddingBottom: SPACING.xs,
+                          background: SURFACE.panel,
+                          borderTop: `1px solid ${BORDER.default}`,
+                          borderBottom: `1px solid ${BORDER.default}`,
+                        }}>
+                          {turns === undefined ? (
+                            <div style={{ color: TEXT.muted, fontSize: 11, padding: `${SPACING.xs}px 0` }}>
+                              Loading turns…
+                            </div>
+                          ) : turns.length === 0 ? (
+                            <div style={{ color: TEXT.muted, fontSize: 11, padding: `${SPACING.xs}px 0` }}>
+                              No turn data
+                            </div>
+                          ) : (
+                            turns.map((turn) => (
+                              <div
+                                key={`${turn.turnIndex}-${turn.nodeId}`}
+                                style={{
+                                  padding: `${SPACING.xs}px 0`,
+                                  borderBottom: `1px solid ${BORDER.default}`,
+                                }}
+                              >
+                                <div style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: SPACING.xs,
+                                  fontSize: 11,
+                                }}>
+                                  <span style={{
+                                    color: statusColor(turn.status),
+                                    fontSize: 10,
+                                  }}>
+                                    {statusIcon(turn.status)}
+                                  </span>
+                                  <span style={{ color: TEXT.secondary, fontWeight: 500 }}>
+                                    T{turn.turnIndex}: {turn.nodeLabel}
+                                  </span>
+                                  <span style={{ color: TEXT.muted, fontSize: 10 }}>
+                                    ({turn.files.length} files)
+                                  </span>
+                                </div>
+                                {/* File list */}
+                                <div style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 4,
+                                  marginTop: 2,
+                                  paddingLeft: SPACING.sm,
+                                }}>
+                                  {turn.files.map((file) => (
+                                    <button
+                                      key={file.fileName}
+                                      type="button"
+                                      onClick={() => handleViewFile(file.filePath)}
+                                      style={{
+                                        background: SURFACE.editor,
+                                        border: `1px solid ${BORDER.default}`,
+                                        borderRadius: 3,
+                                        color: TEXT.secondary,
+                                        fontSize: 10,
+                                        cursor: "pointer",
+                                        padding: "1px 5px",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 3,
+                                      }}
+                                    >
+                                      <span>{file.icon}</span>
+                                      <span>{file.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
@@ -1337,6 +1717,83 @@ function AssistantChat() {
           >
             Back to live
           </button>
+        </div>
+      )}
+
+      {/* File viewer overlay for turn files */}
+      {viewingFile && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 300,
+            background: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "90%",
+              maxWidth: 600,
+              maxHeight: "80%",
+              background: SURFACE.sidebar,
+              border: `1px solid ${BORDER.default}`,
+              borderRadius: 6,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: `${SPACING.sm}px ${SPACING.md}px`,
+                borderBottom: `1px solid ${BORDER.default}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ color: TEXT.primary, fontSize: TYPO.smallFontSize, fontWeight: 600 }}>
+                📄 {viewingFile.filePath.split("/").pop()}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
+                <span style={{ color: TEXT.muted, fontSize: 11 }}>
+                  {viewingFile.filePath}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearViewingFile}
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${BORDER.default}`,
+                    borderRadius: 4,
+                    color: TEXT.secondary,
+                    fontSize: TYPO.smallFontSize,
+                    cursor: "pointer",
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+            <div
+              style={{
+                flex: 1,
+                overflow: "auto",
+                padding: SPACING.md,
+                color: TEXT.secondary,
+                fontSize: TYPO.smallFontSize,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {viewingFile.content}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1454,7 +1911,7 @@ function AssistantChat() {
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

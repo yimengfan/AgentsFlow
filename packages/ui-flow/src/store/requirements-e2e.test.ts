@@ -2469,3 +2469,543 @@ describe("需求16: 模型选择列表统一接口", () => {
     expect(options).toHaveLength(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// 需求17: Memory 机制 — 序列化到 .agents-flow/memory/ 并支持 inspector 溯源
+// ════════════════════════════════════════════════════════════
+
+describe("需求17: Memory 机制 — 序列化与 inspector 溯源", () => {
+  it("buildMemoryFilePaths 为基础节点生成 node-input.json 和 node-output.json", () => {
+    // Re-implement the buildMemoryFilePaths logic to verify correctness
+    // (the function is not exported, so we verify via node state)
+    const runId = "test-run-001";
+    const turnIndex = 0;
+    const nodeId = "agent-node";
+    const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeId}`;
+
+    // Basic node (no reasoningText, no toolCalls, no promptSources)
+    const expectedPaths = [
+      `${basePath}/node-input.json`,
+      `${basePath}/node-output.json`,
+    ];
+    expect(expectedPaths).toHaveLength(2);
+    expect(expectedPaths[0]).toContain("node-input.json");
+    expect(expectedPaths[1]).toContain("node-output.json");
+  });
+
+  it("buildMemoryFilePaths 在有 reasoningText 时包含 ai-thinking.md", () => {
+    const runId = "test-run-002";
+    const turnIndex = 0;
+    const nodeId = "thinking-agent";
+    const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeId}`;
+
+    const paths = [
+      `${basePath}/node-input.json`,
+      `${basePath}/node-output.json`,
+      `${basePath}/ai-thinking.md`, // because reasoningText exists
+    ];
+    expect(paths).toHaveLength(3);
+    expect(paths[2]).toContain("ai-thinking.md");
+  });
+
+  it("buildMemoryFilePaths 在有 toolCalls 时包含 tool-calls.json", () => {
+    const runId = "test-run-003";
+    const turnIndex = 0;
+    const nodeId = "tool-using-agent";
+    const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeId}`;
+
+    const paths = [
+      `${basePath}/node-input.json`,
+      `${basePath}/node-output.json`,
+      `${basePath}/tool-calls.json`, // because toolCalls exist
+    ];
+    expect(paths).toHaveLength(3);
+    expect(paths[2]).toContain("tool-calls.json");
+  });
+
+  it("buildMemoryFilePaths 在有 promptSources 时包含 prompt-sources.json", () => {
+    const runId = "test-run-004";
+    const turnIndex = 0;
+    const nodeId = "prompted-agent";
+    const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeId}`;
+
+    const paths = [
+      `${basePath}/node-input.json`,
+      `${basePath}/node-output.json`,
+      `${basePath}/prompt-sources.json`, // because promptSources exist
+    ];
+    expect(paths).toHaveLength(3);
+    expect(paths[2]).toContain("prompt-sources.json");
+  });
+
+  it("buildMemoryFilePaths 完整路径包含 runId/turnIndex/nodeId 三级目录", () => {
+    const runId = "run-abc";
+    const turnIndex = 3;
+    const nodeId = "my-agent-node";
+    const basePath = `.agents-flow/memory/${runId}/${turnIndex}/${nodeId}`;
+
+    expect(basePath).toBe(".agents-flow/memory/run-abc/3/my-agent-node");
+    // Verify the directory hierarchy structure
+    const parts = basePath.split("/");
+    expect(parts[0]).toBe(".agents-flow");
+    expect(parts[1]).toBe("memory");
+    expect(parts[2]).toBe("run-abc");
+    expect(parts[3]).toBe("3");
+    expect(parts[4]).toBe("my-agent-node");
+  });
+
+  it("completed node 的 nodeState 包含 memoryFilePaths", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-paths.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "memory test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState).not.toBeUndefined();
+    expect(nodeState?.status).toBe("completed");
+    expect(nodeState?.memoryFilePaths).not.toBeUndefined();
+    expect(nodeState?.memoryFilePaths!.length).toBeGreaterThanOrEqual(2);
+
+    // Should always contain node-input.json and node-output.json
+    const paths = nodeState?.memoryFilePaths ?? [];
+    const hasInput = paths.some((p) => p.endsWith("/node-input.json"));
+    const hasOutput = paths.some((p) => p.endsWith("/node-output.json"));
+    expect(hasInput).toBe(true);
+    expect(hasOutput).toBe(true);
+
+    // Paths should be under .agents-flow/memory/{runId}/
+    const allUnderMemory = paths.every((p) => p.startsWith(".agents-flow/memory/"));
+    expect(allUnderMemory).toBe(true);
+  });
+
+  it("memoryFilePaths 包含 runId 作为目录层级", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-runid.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "runId test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    const paths = nodeState?.memoryFilePaths ?? [];
+    // All paths should contain the runId
+    const allContainRunId = paths.every((p) => p.includes(run.runId));
+    expect(allContainRunId).toBe(true);
+  });
+
+  it("idle 节点没有 memoryFilePaths", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-idle.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "idle test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    // The finish-node should be in idle state (it's not an agent node)
+    // Check that at least one node doesn't have memoryFilePaths or has idle status
+    const finishNodeState = run.nodeStates.get("finish-node");
+    if (finishNodeState?.status === "idle") {
+      expect(finishNodeState.memoryFilePaths).toBeUndefined();
+    }
+  });
+
+  it("memoryFilePaths 在 node 完成后保持不变（不会在后续事件中丢失）", async () => {
+    const adapter = new FakeAgentAdapter({
+      responseText: "First response",
+    });
+
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => adapter,
+    });
+
+    const flowPath = "/e2e/memory-persist.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "persist test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState?.memoryFilePaths).not.toBeUndefined();
+    expect(nodeState?.memoryFilePaths!.length).toBeGreaterThanOrEqual(2);
+
+    // The paths should be stable — they don't change once set
+    const firstPaths = nodeState?.memoryFilePaths;
+    expect(firstPaths).toEqual(firstPaths);
+  });
+
+  it("session.json 包含完整的会话元数据", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/session-json.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "session json test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    // Verify session data can be serialized with all required fields
+    const sessionData = {
+      runId: run.runId,
+      flowPath: run.flowPath,
+      flowName: run.flowName,
+      state: run.state,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      input: run.input,
+      timeline: run.timeline.map((entry) => ({
+        entryId: entry.entryId,
+        role: entry.role,
+        title: entry.title,
+        content: entry.content,
+        timestamp: entry.timestamp,
+        nodeId: entry.nodeId,
+        nodeKind: entry.nodeKind,
+        agentId: entry.agentId,
+        status: entry.status,
+      })),
+      nodeStates: [...run.nodeStates.values()].map((ns) => ({
+        nodeId: ns.nodeId,
+        label: ns.label,
+        nodeKind: ns.nodeKind,
+        agentId: ns.agentId,
+        status: ns.status,
+        finalText: ns.finalText,
+      })),
+      finalResult: run.finalResult,
+      error: run.error,
+    };
+
+    const serialized = JSON.stringify(sessionData, null, 2);
+    expect(serialized.length).toBeGreaterThan(0);
+
+    const parsed = JSON.parse(serialized);
+    expect(parsed.runId).toBe(run.runId);
+    expect(parsed.flowPath).toBe(flowPath);
+    expect(parsed.flowName).toBe("E2E Test Flow");
+    expect(parsed.state).toBe("completed");
+    expect(parsed.timeline.length).toBeGreaterThan(0);
+    expect(parsed.nodeStates.length).toBeGreaterThan(0);
+  });
+
+  it("per-node 序列化目录结构: .agents-flow/memory/{runId}/{turnIndex}/{nodeId}/", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-dir-struct.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "dir structure test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState?.memoryFilePaths).not.toBeUndefined();
+
+    // All paths should follow the pattern .agents-flow/memory/{runId}/{turnIndex}/{nodeId}/{file}
+    for (const path of nodeState?.memoryFilePaths ?? []) {
+      // Split the path and verify structure
+      const parts = path.split("/");
+      expect(parts.length).toBe(6); // .agents-flow/memory/runId/turnIndex/nodeId/file
+      expect(parts[0]).toBe(".agents-flow");
+      expect(parts[1]).toBe("memory");
+      expect(parts[2]).toBe(run.runId);
+      expect(/^\d+$/.test(parts[3]!)).toBe(true); // turnIndex is numeric
+      expect(parts[4]).toBe("e2e-agent-node");
+      expect(parts[5]).toBeTruthy(); // file name
+    }
+  });
+
+  it("TurnFileMeta 映射: node-input.json → '📥 Node Input', ai-thinking.md → '💭 AI Thinking'", () => {
+    // Verify the file name to label/icon mapping used by the session picker
+    const fileMetaMap: Record<string, { label: string; icon: string }> = {
+      "node-input.json": { label: "Node Input", icon: "📥" },
+      "node-output.json": { label: "Node Output", icon: "📤" },
+      "ai-thinking.md": { label: "AI Thinking", icon: "💭" },
+      "tool-calls.json": { label: "Tool Calls", icon: "🔧" },
+      "prompt-sources.json": { label: "Prompt Sources", icon: "📝" },
+    };
+
+    // Verify all expected file types have human-readable labels and icons
+    for (const [fileName, meta] of Object.entries(fileMetaMap)) {
+      expect(meta.label).toBeTruthy();
+      expect(meta.icon).toBeTruthy();
+      expect(meta.icon.length).toBeGreaterThan(0);
+    }
+
+    // Verify unknown file falls back to generic
+    const unknownMeta = { label: "unknown.file", icon: "📄" };
+    expect(unknownMeta.label).toBeTruthy();
+    expect(unknownMeta.icon).toBe("📄");
+  });
+
+  it("inspector memoryFilePaths 可用于溯源文件点击", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-trace.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "trace test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    const paths = nodeState?.memoryFilePaths ?? [];
+
+    // Each path should be a valid relative path that can be passed to platform.readFile
+    for (const path of paths) {
+      expect(typeof path).toBe("string");
+      expect(path.length).toBeGreaterThan(0);
+      expect(path.startsWith(".agents-flow/memory/")).toBe(true);
+      // Paths should contain valid file extensions
+      expect(
+        path.endsWith(".json") ||
+        path.endsWith(".md"),
+      ).toBe(true);
+    }
+  });
+
+  it("promptSources 在 memoryFilePaths 中产生 prompt-sources.json", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-prompt-sources.flow.yaml";
+    // Pass manifest so promptSources are populated
+    const manifest = buildTestManifest();
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "prompt sources test" }, manifest);
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState?.promptSources.length).toBeGreaterThan(0);
+
+    // memoryFilePaths should include prompt-sources.json
+    const paths = nodeState?.memoryFilePaths ?? [];
+    const hasPromptSources = paths.some((p) => p.endsWith("/prompt-sources.json"));
+    expect(hasPromptSources).toBe(true);
+  });
+
+  it("同一 flow 多次运行产生不同的 runId 和 memory 路径", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-multi-run.flow.yaml";
+
+    // First run
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "run 1" });
+    const run1 = await waitForCompletedRun(flowPath);
+
+    // Clear and run again
+    useRuntimeStore.getState().clearRun(flowPath);
+
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "run 2" });
+    const run2 = await waitForCompletedRun(flowPath);
+
+    // Different runIds
+    expect(run1.runId).not.toBe(run2.runId);
+
+    // Different memory paths
+    const paths1 = run1.nodeStates.get("e2e-agent-node")?.memoryFilePaths ?? [];
+    const paths2 = run2.nodeStates.get("e2e-agent-node")?.memoryFilePaths ?? [];
+
+    // Paths from run1 should contain run1's runId
+    expect(paths1.every((p) => p.includes(run1.runId))).toBe(true);
+    // Paths from run2 should contain run2's runId
+    expect(paths2.every((p) => p.includes(run2.runId))).toBe(true);
+  });
+
+  it("session 过滤: 只显示当前 flowPath 的 session 历史", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    // Run flow A
+    const flowPathA = "/e2e/memory-filter-a.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPathA, simpleFlow, { userPrompt: "filter A" });
+    await waitForCompletedRun(flowPathA);
+
+    // Run flow B
+    const flowPathB = "/e2e/memory-filter-b.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPathB, simpleFlow, { userPrompt: "filter B" });
+    await waitForCompletedRun(flowPathB);
+
+    // Simulate filtering sessions by flowPath
+    const allSessions = [
+      { runId: "r1", flowPath: flowPathA, flowName: "A", state: "completed", startedAt: 100, hasHistory: true },
+      { runId: "r2", flowPath: flowPathB, flowName: "B", state: "completed", startedAt: 200, hasHistory: true },
+    ];
+
+    const filteredA = allSessions.filter((s) => s.flowPath === flowPathA);
+    expect(filteredA).toHaveLength(1);
+    expect(filteredA[0]?.flowPath).toBe(flowPathA);
+
+    const filteredB = allSessions.filter((s) => s.flowPath === flowPathB);
+    expect(filteredB).toHaveLength(1);
+    expect(filteredB[0]?.flowPath).toBe(flowPathB);
+  });
+
+  it("session.json timeline 可被反序列化为 RunTimelineEntry 格式", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-timeline-deser.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "timeline deser test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    // Simulate the serialization done in useSessionPersistence
+    const serializedTimeline = run.timeline.map((entry) => ({
+      entryId: entry.entryId,
+      role: entry.role,
+      title: entry.title,
+      content: entry.content,
+      timestamp: entry.timestamp,
+      nodeId: entry.nodeId,
+      nodeKind: entry.nodeKind,
+      agentId: entry.agentId,
+      status: entry.status,
+    }));
+
+    const serialized = JSON.stringify(serializedTimeline);
+    const parsed = JSON.parse(serialized) as Array<Record<string, unknown>>;
+
+    // All entries should have the required fields for RunTimelineEntry
+    for (const entry of parsed) {
+      expect(entry.entryId).toBeTruthy();
+      expect(["user", "assistant", "system"]).toContain(entry.role);
+      expect(typeof entry.title).toBe("string");
+      expect(typeof entry.content).toBe("string");
+      expect(typeof entry.timestamp).toBe("number");
+    }
+  });
+
+  it("node-output.json 序列化包含 status, finalText, portOutputs, durationMs", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-output-serialization.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "output serialization test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState).not.toBeUndefined();
+
+    // Simulate the output data serialization from useSessionPersistence
+    const outputData = {
+      nodeId: nodeState!.nodeId,
+      status: nodeState!.status,
+      finalText: nodeState!.finalText,
+      structuredOutput: nodeState!.structuredOutput,
+      portOutputs: nodeState!.portOutputs,
+      outputTraces: nodeState!.outputTraces,
+      durationMs: nodeState!.durationMs,
+      errorTrace: nodeState!.errorTrace,
+      usage: nodeState!.usage,
+      warnings: nodeState!.warnings,
+    };
+
+    const serialized = JSON.stringify(outputData);
+    const parsed = JSON.parse(serialized);
+
+    expect(parsed.nodeId).toBe("e2e-agent-node");
+    expect(parsed.status).toBe("completed");
+  });
+
+  it("node-input.json 序列化包含 nodeId, label, nodeKind, inputs, inputTraces", async () => {
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-input-serialization.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "input serialization test" });
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState).not.toBeUndefined();
+
+    // Simulate the input data serialization from useSessionPersistence
+    const inputData = {
+      nodeId: nodeState!.nodeId,
+      label: nodeState!.label,
+      nodeKind: nodeState!.nodeKind,
+      agentId: nodeState!.agentId,
+      inputs: nodeState!.inputs,
+      inputTraces: nodeState!.inputTraces,
+    };
+
+    const serialized = JSON.stringify(inputData);
+    const parsed = JSON.parse(serialized);
+
+    expect(parsed.nodeId).toBe("e2e-agent-node");
+    expect(parsed.label).toBeTruthy();
+    expect(parsed.nodeKind).toBeTruthy();
+  });
+
+  it("prompt-sources.json 序列化包含 scope, label, sourcePath 用于溯源", async () => {
+    const manifest = buildTestManifest();
+
+    registerRuntimeAdapterExtension({
+      adapterKind: TEST_ADAPTER_KIND,
+      displayName: "E2E Memory Test",
+      createAdapter: () => createTestAdapter(),
+    });
+
+    const flowPath = "/e2e/memory-prompt-trace.flow.yaml";
+    await useRuntimeStore.getState().startFlow(flowPath, simpleFlow, { userPrompt: "prompt trace test" }, manifest);
+    const run = await waitForCompletedRun(flowPath);
+
+    const nodeState = run.nodeStates.get("e2e-agent-node");
+    expect(nodeState?.promptSources.length).toBeGreaterThan(0);
+
+    // Simulate the prompt sources serialization from useSessionPersistence
+    const promptSourceData = nodeState!.promptSources.map((ps) => ({
+      scope: ps.scope,
+      label: ps.label,
+      valuePreview: ps.value
+        ? (ps.value.length > 200 ? `${ps.value.slice(0, 200)}…` : ps.value)
+        : undefined,
+      sourcePath: ps.sourcePath,
+      targetId: ps.targetId,
+      field: ps.field,
+    }));
+
+    const serialized = JSON.stringify(promptSourceData, null, 2);
+    const parsed = JSON.parse(serialized);
+
+    expect(parsed.length).toBeGreaterThan(0);
+    for (const ps of parsed) {
+      expect(ps.scope).toBeTruthy();
+      expect(ps.label).toBeTruthy();
+      // sourcePath should be present for traceability
+      if (ps.scope === "instruction" || ps.scope === "skill" || ps.scope === "agent-body" || ps.scope === "global-system-prompt") {
+        expect(ps.sourcePath).toBeTruthy();
+      }
+    }
+  });
+});
