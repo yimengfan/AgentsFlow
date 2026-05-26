@@ -250,7 +250,40 @@ function migrateFromOldSchema(persisted: Record<string, unknown>): Partial<Setti
     };
   }
 
+  // Handle empty providers array from old persisted state — auto-populate a default
+  if ("providers" in persisted && Array.isArray(persisted.providers) && persisted.providers.length === 0) {
+    const defaultProvider = createDefaultDeepseekProvider();
+    return {
+      providers: [defaultProvider],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+      activeSettingsTab: "llm",
+    };
+  }
+
   return null;
+}
+
+/** Create a default DeepSeek provider with preset models */
+function createDefaultDeepseekProvider(): LlmProvider {
+  const id = generateId();
+  return {
+    id,
+    tag: "deepseek",
+    baseUrl: "https://api.deepseek.com",
+    apiKey: "",
+    protocol: "openai",
+    models: [
+      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: id },
+      { id: "deepseek-v4", label: "DeepSeek V4", providerId: id },
+      { id: "deepseek-r1", label: "DeepSeek R1", providerId: id },
+      { id: "gpt-4o", label: "GPT-4o", providerId: id },
+      { id: "gpt-4o-mini", label: "GPT-4o Mini", providerId: id },
+      { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId: id },
+      { id: "qwen3-235b-a22b", label: "Qwen3 235B", providerId: id },
+    ],
+    lastFetchError: null,
+    lastFetchedAt: null,
+  };
 }
 
 // ─── Store ─────────────────────────────────────────────────

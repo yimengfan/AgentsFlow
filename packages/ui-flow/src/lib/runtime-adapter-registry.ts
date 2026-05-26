@@ -21,33 +21,69 @@ let builtinExtensionsRegistered = false;
 
 /**
  * Resolve provider config from settings store for a given adapter kind.
+ * Strategy:
+ * 1. Match by tag (case-insensitive contains).
+ * 2. If no tag match, try matching by baseUrl hostname heuristic.
+ * 3. If still no match, fall back to the first provider with an apiKey.
  * Falls back to env vars if no matching provider is found.
  */
 function resolveProviderConfig(adapterKind: string): { baseUrl?: string; apiKey?: string; model?: string } {
-  const providers = useSettingsStore.getState().providers;
+  const { providers, defaultModelKey } = useSettingsStore.getState();
+
+  if (providers.length === 0) {
+    return {};
+  }
+
   // Map adapter kind to provider tag heuristic
   const tagHint = adapterKind === "deepseek" ? "deepseek" : adapterKind;
-  const matchingProvider = providers.find((p) =>
+
+  // 1. Try tag match (case-insensitive contains)
+  let matchingProvider = providers.find((p) =>
     p.tag.toLowerCase() === tagHint.toLowerCase()
     || p.tag.toLowerCase().includes(tagHint.toLowerCase())
   );
 
-  if (matchingProvider) {
-    // Use composite defaultModelKey to extract model
-    const defaultKey = useSettingsStore.getState().defaultModelKey;
-    let model: string | undefined;
-    if (defaultKey && defaultKey.startsWith(`${matchingProvider.tag}/`)) {
-      model = defaultKey.slice(matchingProvider.tag.length + 1);
-    }
-    return {
-      baseUrl: matchingProvider.baseUrl,
-      apiKey: matchingProvider.apiKey,
-      ...(model !== undefined ? { model } : {}),
-    };
+  // 2. If no tag match, try baseUrl hostname heuristic
+  if (!matchingProvider) {
+    matchingProvider = providers.find((p) => {
+      try {
+        const hostname = new URL(p.baseUrl).hostname.toLowerCase();
+        return hostname.includes(tagHint.toLowerCase());
+      } catch {
+        return false;
+      }
+    });
   }
 
-  // No matching provider — fall back to env vars (DeepSeekChatAdapter resolves internally)
-  return {};
+  // 3. If still no match, fall back to the first provider that has an apiKey or baseUrl
+  if (!matchingProvider) {
+    matchingProvider = providers.find((p) => p.apiKey || p.baseUrl)
+      ?? providers[0];
+  }
+
+  if (!matchingProvider) {
+    return {};
+  }
+
+  // Extract model from defaultModelKey using case-insensitive tag prefix match
+  let model: string | undefined;
+  if (defaultModelKey) {
+    const slashIdx = defaultModelKey.indexOf("/");
+    if (slashIdx !== -1) {
+      const keyTag = defaultModelKey.slice(0, slashIdx);
+      const keyModel = defaultModelKey.slice(slashIdx + 1);
+      // Case-insensitive tag prefix match
+      if (keyTag.toLowerCase() === matchingProvider.tag.toLowerCase()) {
+        model = keyModel;
+      }
+    }
+  }
+
+  return {
+    baseUrl: matchingProvider.baseUrl,
+    apiKey: matchingProvider.apiKey,
+    ...(model !== undefined ? { model } : {}),
+  };
 }
 
 function ensureBuiltinExtensions(): void {
@@ -80,16 +116,22 @@ function ensureBuiltinExtensions(): void {
     adapterKind: "pi-mono",
     displayName: "pi-mono",
     createAdapter: ({ flow, agentDef }) => {
-      const providerConfig = resolveProviderConfig("deepseek");
+      // pi-mono primarily uses deepseek transport, but also try the adapterKind itself
+      // so that users who tag their provider as "pi-mono" can find it
+      const providerConfig = resolveProviderConfig("pi-mono");
+      // If pi-mono tag didn't match, fall back to deepseek tag heuristic
+      const finalConfig = providerConfig.apiKey || providerConfig.baseUrl
+        ? providerConfig
+        : resolveProviderConfig("deepseek");
       return new PiMonoAgentAdapter({
         flowName: flow.meta.name,
         ...(agentDef.modelProfile?.model !== undefined ? { model: agentDef.modelProfile.model } : {}),
         ...(agentDef.modelProfile?.temperature !== undefined ? { temperature: agentDef.modelProfile.temperature } : {}),
         ...(agentDef.adapterConfig !== undefined ? { adapterConfig: agentDef.adapterConfig } : {}),
         // Inject settings store provider config if available
-        ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
-        ...(providerConfig.apiKey ? { apiKey: providerConfig.apiKey } : {}),
-        ...(providerConfig.model ? { model: providerConfig.model } : {}),
+        ...(finalConfig.baseUrl ? { baseUrl: finalConfig.baseUrl } : {}),
+        ...(finalConfig.apiKey ? { apiKey: finalConfig.apiKey } : {}),
+        ...(finalConfig.model ? { model: finalConfig.model } : {}),
       });
     },
   });
