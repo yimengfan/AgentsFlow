@@ -69,6 +69,20 @@ function iconForSpec(spec: NodeSpec | undefined, kind: string): string {
   return iconForKind(kind);
 }
 
+// ─── Port type → emoji ─────────────────────────────────────
+
+function portEmoji(dataType: PortDataType): string {
+  const emojiMap: Record<string, string> = {
+    documents: "📄",
+    prompt: "📝",
+    plan: "🔁",
+    score: "📊",
+    string: "📝",
+    flow: "🌊",
+  };
+  return emojiMap[dataType] ?? "📦";
+}
+
 // ─── Spec-aware node renderer ──────────────────────────────
 
 interface AgentNodeData {
@@ -294,98 +308,128 @@ function SpecNode({ data, selected, id }: NodeProps) {
       >
         {iconForSpec(spec, effectiveKind)} {spec ? `${spec.kind}(${spec.label})` : effectiveKind}
       </div>
-      {/* Agent name (slightly larger, prominent) — hidden when no agentRef (would be undefined) */}
-      {!(isAgentKind && !d.agentRef) && (
-      <div
-        style={{
-          fontSize: TYPO.fontSize + 2,
-          fontWeight: 600,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {agentDisplayName}
-      </div>
-      )}
-      {/* Warning: no agent selected — positioned where agent name would be */}
-      {isAgentKind && !d.agentRef && (
-        <div
-          style={{
-            fontSize: TYPO.fontSize - 1,
-            fontWeight: 500,
-            lineHeight: "16px",
-            color: "#f87171",
-            background: "rgba(248, 113, 113, 0.15)",
-            border: "1px solid rgba(248, 113, 113, 0.3)",
-            borderRadius: 3,
-            padding: "1px 4px",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          ⚠️ 请选择 agent.md
-        </div>
-      )}
-      {/* Output type badge — always show with placeholder */}
+      {/* ─── Agent node content ─── */}
       {isAgentKind && (
-        <div
-          style={{
-            padding: "1px 6px",
-            borderRadius: 4,
-            fontSize: TYPO.smallFontSize - 1,
-            fontWeight: 500,
-            background: "rgba(255,255,255,0.18)",
-            whiteSpace: "nowrap",
-            opacity: resolvedOutputKind ? 1 : 0.4,
-          }}
-        >
-          📤 {resolvedOutputKind || "—"}
-        </div>
-      )}
-      {/* Model name */}
-      {resolvedModel && (
-        <div
-          style={{
-            fontSize: TYPO.smallFontSize - 1,
-            opacity: 0.6,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          }}
-        >
-          {resolvedModel.value.includes("/")
-            ? `${resolvedModel.value.split("/").pop()} (${resolvedModel.value.split("/")[0]})`
-            : resolvedModel.value}
-          {resolvedModel.source !== "node" && (
-            <span style={{ opacity: 0.5, marginLeft: 4, fontSize: TYPO.smallFontSize - 2 }}>↳{resolvedModel.source === "agent.md" ? "agent.md" : "全局"}</span>
+        <>
+          {/* Agent name (slightly larger, prominent) — hidden when no agentRef (would be undefined) */}
+          {d.agentRef && (
+            <div
+              style={{
+                fontSize: TYPO.fontSize + 2,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {agentDisplayName}
+            </div>
           )}
-        </div>
+          {/* Warning: no agent selected — positioned where agent name would be */}
+          {!d.agentRef && (
+            <div
+              style={{
+                fontSize: TYPO.fontSize - 1,
+                fontWeight: 500,
+                lineHeight: "16px",
+                color: "#f87171",
+                background: "rgba(248, 113, 113, 0.15)",
+                border: "1px solid rgba(248, 113, 113, 0.3)",
+                borderRadius: 3,
+                padding: "1px 4px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              ⚠️ 请选择 agent.md
+            </div>
+          )}
+          {/* Output type badge — always show with placeholder */}
+          <div
+            style={{
+              padding: "1px 6px",
+              borderRadius: 4,
+              fontSize: TYPO.smallFontSize - 1,
+              fontWeight: 500,
+              background: "rgba(255,255,255,0.18)",
+              whiteSpace: "nowrap",
+              opacity: resolvedOutputKind ? 1 : 0.4,
+            }}
+          >
+            📤 {resolvedOutputKind || "—"}
+          </div>
+          {/* Model name */}
+          {resolvedModel && (
+            <div
+              style={{
+                fontSize: TYPO.smallFontSize - 1,
+                opacity: 0.6,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              }}
+            >
+              {resolvedModel.value.includes("/")
+                ? `${resolvedModel.value.split("/").pop()} (${resolvedModel.value.split("/")[0]})`
+                : resolvedModel.value}
+              {resolvedModel.source !== "node" && (
+                <span style={{ opacity: 0.5, marginLeft: 4, fontSize: TYPO.smallFontSize - 2 }}>↳{resolvedModel.source === "agent.md" ? "agent.md" : "全局"}</span>
+              )}
+            </div>
+          )}
+          {/* Warning: no model available */}
+          {!resolvedModel && (
+            <div
+              style={{
+                fontSize: TYPO.smallFontSize - 1,
+                color: "#f87171",
+                opacity: 0.7,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              ⚠️ 请增加全局设置 model
+            </div>
+          )}
+        </>
       )}
 
-      {/* Warning: no model available for agent nodes */}
-      {isAgentKind && !resolvedModel && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: `${SPACING.sm}px`,
-            left: `${SPACING.md}px`,
-            right: `${SPACING.md}px`,
-            padding: "1px 5px",
-            borderRadius: 3,
-            background: "rgba(248, 113, 113, 0.2)",
-            border: "1px solid rgba(248, 113, 113, 0.4)",
-            color: "#f87171",
-            fontSize: TYPO.smallFontSize - 1,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          ⚠️ 请增加全局设置 model
-        </div>
+      {/* ─── Non-agent node content ─── */}
+      {!isAgentKind && (
+        <>
+          {/* Description */}
+          {spec?.description && (
+            <div
+              style={{
+                fontSize: TYPO.fontSize - 1,
+                opacity: 0.75,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {spec.description}
+            </div>
+          )}
+          {/* Output data ports summary */}
+          {outputDataPorts.length > 0 && (
+            <div
+              style={{
+                padding: "1px 6px",
+                borderRadius: 4,
+                fontSize: TYPO.smallFontSize - 1,
+                fontWeight: 500,
+                background: "rgba(255,255,255,0.18)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {outputDataPorts.map((p) => `${portEmoji(p.dataType)} ${p.label ?? p.portId}`).join(", ")}
+            </div>
+          )}
+        </>
       )}
 
       {/* Input handles — flow ports */}
