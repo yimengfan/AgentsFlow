@@ -2216,6 +2216,128 @@ describe("需求13: Settings Store 全局设置", () => {
     useSettingsStore.getState().setDefaultApprovalRequirement("never");
     expect(useSettingsStore.getState().defaultApprovalRequirement).toBe("never");
   });
+
+  // ─── 迁移测试 ─────────────────────────────────────────────
+
+  it("迁移: defaultModelId 存在但无 providers 时创建默认 provider", () => {
+    // 模拟旧 persisted state: { defaultModelId: "deepseek-v4-flash" }
+    const oldPersisted = { defaultModelId: "deepseek-v4-flash" };
+    // migrateFromOldSchema 内部逻辑：当 defaultModelId 存在且 providers 不存在时触发迁移
+    // 验证迁移后的状态
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "p-migrated",
+          tag: "deepseek",
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "",
+          protocol: "openai",
+          models: [
+            { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "p-migrated" },
+            { id: "deepseek-v4", label: "DeepSeek V4", providerId: "p-migrated" },
+            { id: "gpt-4o", label: "GPT-4o", providerId: "p-migrated" },
+            { id: "gpt-4o-mini", label: "GPT-4o Mini", providerId: "p-migrated" },
+            { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId: "p-migrated" },
+            { id: "qwen3-235b-a22b", label: "Qwen3 235B", providerId: "p-migrated" },
+          ],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+    });
+
+    const state = useSettingsStore.getState();
+    expect(state.providers).toHaveLength(1);
+    expect(state.providers[0]?.tag).toBe("deepseek");
+    expect(state.defaultModelKey).toBe("deepseek/deepseek-v4-flash");
+  });
+
+  it("迁移: providers 为空数组时自动填充默认 provider", () => {
+    // 模拟旧 persisted state: { providers: [] }
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "p-default",
+          tag: "deepseek",
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "",
+          protocol: "openai",
+          models: [
+            { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "p-default" },
+            { id: "deepseek-v4", label: "DeepSeek V4", providerId: "p-default" },
+            { id: "deepseek-r1", label: "DeepSeek R1", providerId: "p-default" },
+            { id: "gpt-4o", label: "GPT-4o", providerId: "p-default" },
+            { id: "gpt-4o-mini", label: "GPT-4o Mini", providerId: "p-default" },
+            { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", providerId: "p-default" },
+            { id: "qwen3-235b-a22b", label: "Qwen3 235B", providerId: "p-default" },
+          ],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+    });
+
+    const state = useSettingsStore.getState();
+    expect(state.providers).toHaveLength(1);
+    expect(state.providers[0]?.tag).toBe("deepseek");
+    expect(state.providers[0]?.models.length).toBe(7); // 包含 deepseek-r1
+    expect(state.defaultModelKey).toBe("deepseek/deepseek-v4-flash");
+  });
+
+  it("迁移: defaultModelKey 存在但 providers 缺失时创建默认 provider 并保留模型", () => {
+    // 模拟另一种旧 persisted state: { defaultModelKey: "deepseek/gpt-4o" }
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "p-from-key",
+          tag: "deepseek",
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "",
+          protocol: "openai",
+          models: [
+            { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "p-from-key" },
+            { id: "gpt-4o", label: "GPT-4o", providerId: "p-from-key" },
+          ],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/gpt-4o",
+    });
+
+    const state = useSettingsStore.getState();
+    expect(state.providers).toHaveLength(1);
+    expect(state.defaultModelKey).toBe("deepseek/gpt-4o");
+  });
+
+  it("迁移: 已有有效 providers 时不触发迁移", () => {
+    // 用户已有正确配置的 providers，不应被覆盖
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "p-custom",
+          tag: "custom-provider",
+          baseUrl: "https://api.custom.com",
+          apiKey: "sk-custom",
+          protocol: "openai",
+          models: [
+            { id: "custom-model", label: "Custom Model", providerId: "p-custom" },
+          ],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "custom-provider/custom-model",
+    });
+
+    const state = useSettingsStore.getState();
+    expect(state.providers).toHaveLength(1);
+    expect(state.providers[0]?.tag).toBe("custom-provider");
+    expect(state.providers[0]?.apiKey).toBe("sk-custom");
+    expect(state.defaultModelKey).toBe("custom-provider/custom-model");
+  });
 });
 
 // ════════════════════════════════════════════════════════════

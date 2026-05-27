@@ -281,6 +281,7 @@ afterEach(() => {
 | 全局注册表测试缺少 `afterEach` cleanup | 必须 cleanup 中注销或 clear |
 | flow fixture 缺少 `extensions: { customNodeSpecs: [] }` | 类型化 fixture 必须显式包含 schema 默认值 |
 | Prompt 资产变更不补测试 | 必须补 parser + assembly + binding tests |
+| **Bug 修复不补测试** | 每个修复的 bug 都必须先写复现测试，再写修复代码 |
 | 手改 `dist/` 或 `tsbuildinfo` | 只编辑 `src/` 源码 |
 
 ## 8. Store → Component 渲染管线测试规范

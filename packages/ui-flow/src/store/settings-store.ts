@@ -260,6 +260,35 @@ function migrateFromOldSchema(persisted: Record<string, unknown>): Partial<Setti
     };
   }
 
+  // Handle case where defaultModelKey exists but providers is missing/empty
+  // This handles legacy format where only defaultModelId was stored
+  if ("defaultModelKey" in persisted && typeof persisted.defaultModelKey === "string" && persisted.defaultModelKey.trim().length > 0) {
+    const existingKey = persisted.defaultModelKey;
+    // If providers already has valid entries, don't migrate
+    if (Array.isArray(persisted.providers) && persisted.providers.length > 0) {
+      // Validate that providers have the required structure
+      const hasValidProviders = persisted.providers.every(
+        (p: unknown) => p && typeof p === "object" && "id" in p && "tag" in p && "baseUrl" in p
+      );
+      if (hasValidProviders) {
+        return null;
+      }
+    }
+    // Otherwise, create default provider and try to preserve the model from the key
+    const defaultProvider = createDefaultDeepseekProvider();
+    // Try to extract model from existing key (e.g., "deepseek/deepseek-v4-flash" -> "deepseek-v4-flash")
+    const slashIdx = existingKey.indexOf("/");
+    const modelFromKey = slashIdx !== -1 ? existingKey.slice(slashIdx + 1) : existingKey;
+    // Check if the model from key exists in our default list, if so use it
+    const modelExists = defaultProvider.models.some((m) => m.id === modelFromKey);
+    const finalKey = modelExists ? existingKey : "deepseek/deepseek-v4-flash";
+    return {
+      providers: [defaultProvider],
+      defaultModelKey: finalKey,
+      activeSettingsTab: "llm",
+    };
+  }
+
   return null;
 }
 
