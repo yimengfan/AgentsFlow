@@ -20,6 +20,7 @@ import {
   safeValidateFlowDefinition,
 } from "@agentsflow/flow-schema";
 import { upsertNodePosition, validateConnection } from "../lib/flow-graph.js";
+import { useSettingsStore } from "./settings-store.js";
 
 /** Document type — determines how the center workspace renders the file. */
 export type DocumentType = "flow" | "text" | "binary";
@@ -104,12 +105,20 @@ export interface WorkspaceActions {
   setPromptAssetManifest: (manifest: PromptAssetManifest | null) => void;
   /** Save a flow to disk via platform API and mark it as saved */
   saveFlow: (flowPath: string, platform: PlatformApi) => Promise<void>;
+  /** Schedule a debounced auto-save for a flow; called after any config/mutation that changes the document */
+  scheduleAutoSave: (flowPath: string, platform: PlatformApi) => void;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;
 
 /** Counter for generating unique untitled flow names. */
 let untitledCounter = 0;
+
+/** Auto-save debounce timers keyed by flowPath */
+const autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Auto-save debounce interval in milliseconds */
+const AUTO_SAVE_DELAY_MS = 800;
 
 function buildUpdatedDocument(doc: DocumentState, flow: FlowDefinition): DocumentState {
   const validation = safeValidateFlowDefinition(flow);
@@ -138,6 +147,61 @@ function commitDocument(
   setState({ documents: nextDocuments });
 }
 
+/**
+ * Apply default model to agent nodes that have no model configured.
+ * Returns a new FlowDefinition with updated node configs.
+ *
+ * Resolution priority:
+ * 1. Node-level explicit model (config.model) — already set, skip
+ * 2. Global default model (index=0 from SettingsStore) — set if available
+ * 3. No model available — leave empty (UI shows "增加全局设置" prompt)
+ */
+function applyDefaultModelToAgentNodes(flow: FlowDefinition): FlowDefinition {
+  const settingsState = useSettingsStore.getState();
+  const modelOptions = settingsState.getModelOptions();
+  const globalDefaultKey = settingsState.defaultModelKey;
+
+  // Determine the default model to apply: prefer globalDefaultKey, else index=0
+  let defaultModelKey: string | undefined;
+  if (globalDefaultKey) {
+    defaultModelKey = globalDefaultKey;
+  } else if (modelOptions.length > 0) {
+    defaultModelKey = modelOptions[0]!.key;
+  }
+
+  if (!defaultModelKey) return flow; // No models available at all
+
+  const needsDefaultModel = (node: NodeDef): boolean => {
+    // Only agent nodes need default model
+    const isAgent = node.nodeKind?.startsWith("agent.") ?? false;
+    if (!isAgent) return false;
+    // Skip if node already has a model in config
+    const config = node.config as Record<string, unknown> | undefined;
+    const currentModel = typeof config?.model === "string" ? config.model : "";
+    return !currentModel;
+  };
+
+  const anyNodeNeedsDefault = flow.graph.nodes.some(needsDefaultModel);
+  if (!anyNodeNeedsDefault) return flow;
+
+  return {
+    ...flow,
+    graph: {
+      ...flow.graph,
+      nodes: flow.graph.nodes.map((node) => {
+        if (!needsDefaultModel(node)) return node;
+        return {
+          ...node,
+          config: {
+            ...(node.config ?? {}),
+            model: defaultModelKey,
+          },
+        };
+      }),
+    },
+  };
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   flowList: [],
   documents: new Map(),
@@ -163,7 +227,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const parsed = parseFlowYaml(yamlSource);
       const validation = safeValidateFlowDefinition(parsed);
       if (validation.success) {
-        flow = parsed;
+        // Apply default model to agent nodes that have no model configured
+        flow = applyDefaultModelToAgentNodes(parsed);
       } else {
         validationErrors = validation.error.errors.map((e) => e.message);
       }
@@ -359,6 +424,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const nodeId = `${kindPrefix}_${suffix}`;
 
     // Build NodeDef from spec
+    // Resolve agentMdPath from presetAgentRef + promptAssetManifest
+    const defaultAgentMdPath = spec.presetAgentRef && get().promptAssetManifest
+      ? get().promptAssetManifest!.agents.get(spec.presetAgentRef)?.sourcePath ?? `.agents-flow/agents/${spec.presetAgentRef}.agent.md`
+      : spec.presetAgentRef
+        ? `.agents-flow/agents/${spec.presetAgentRef}.agent.md`
+        : undefined;
+
     const newNode: NodeDef = {
       nodeId,
       nodeKind: spec.kind,
@@ -370,6 +442,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       params: [...spec.params],
       // Set agentRef from spec's presetAgentRef (e.g. "main-agent", "sub-agent")
       ...(spec.presetAgentRef ? { agentRef: spec.presetAgentRef } : {}),
+      // Set agentMdPath — the .agent.md file path for this agent binding
+      ...(defaultAgentMdPath ? { agentMdPath: defaultAgentMdPath } : {}),
     };
 
     // Add position to layout
@@ -455,7 +529,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   updateNodeAgentRef: (flowPath, nodeId, agentRef) => {
-    const { documents } = get();
+    const { documents, promptAssetManifest } = get();
     const doc = documents.get(flowPath);
     if (!doc || !doc.flow) return;
 
@@ -465,9 +539,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...doc.flow.graph,
         nodes: doc.flow.graph.nodes.map((node) => {
           if (node.nodeId !== nodeId) return node;
-          const { agentRef: _unused, ...rest } = node;
+          const { agentRef: _unused, agentMdPath: _unusedPath, ...rest } = node;
           if (agentRef === undefined) return rest;
-          return { ...rest, agentRef };
+          // Resolve agentMdPath from the manifest when agentRef changes
+          const resolvedAgentMdPath = agentRef && promptAssetManifest
+            ? promptAssetManifest.agents.get(agentRef)?.sourcePath ?? `.agents-flow/agents/${agentRef}.agent.md`
+            : agentRef
+              ? `.agents-flow/agents/${agentRef}.agent.md`
+              : undefined;
+          return { ...rest, agentRef, ...(resolvedAgentMdPath ? { agentMdPath: resolvedAgentMdPath } : {}) };
         }),
       },
     };
@@ -580,6 +660,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     // Mark as saved after successful write
     get().markSaved(flowPath);
+  },
+
+  scheduleAutoSave: (flowPath, platform) => {
+    // Clear any existing timer for this flow
+    const existing = autoSaveTimers.get(flowPath);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    // Schedule a new auto-save after the debounce delay
+    const timer = setTimeout(async () => {
+      autoSaveTimers.delete(flowPath);
+      try {
+        await get().saveFlow(flowPath, platform);
+      } catch {
+        // Auto-save failure is non-critical; user can still save manually
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    autoSaveTimers.set(flowPath, timer);
   },
 }));
 

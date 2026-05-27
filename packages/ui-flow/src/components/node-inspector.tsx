@@ -765,6 +765,33 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                     {promptAssetManifest.agents.get(selectedNode.agentRef)?.description}
                   </span>
                 ) : null}
+                {/* Show the .agent.md file path */}
+                {selectedNode.agentMdPath && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevealSourceFile(selectedNode.agentMdPath!)}
+                    style={{
+                      textAlign: "left",
+                      width: "100%",
+                      background: SURFACE.editor,
+                      border: `1px solid ${BORDER.default}`,
+                      borderRadius: 4,
+                      color: TEXT.muted,
+                      cursor: "pointer",
+                      fontSize: 11,
+                      padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: SPACING.xs,
+                    }}
+                  >
+                    <span>📄</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {selectedNode.agentMdPath}
+                    </span>
+                  </button>
+                )}
               </label>
             </section>
           )}
@@ -845,8 +872,8 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                     </span>
                   )}
                 </label>
-                {/* No model warning */}
-                {!resolvedModel && (
+                {/* No model warning — only when no models are configured at all */}
+                {!resolvedModel && modelOptions.length === 0 && (
                   <div style={{
                     padding: `${SPACING.xs}px ${SPACING.sm}px`,
                     borderRadius: 6,
@@ -858,7 +885,23 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                     alignItems: "center",
                     gap: SPACING.xs,
                   }}>
-                    ⚠️ 请增加全局设置 model
+                    ⚠️ 请增加全局设置
+                  </div>
+                )}
+                {/* No model resolved but models exist — prompt to select */}
+                {!resolvedModel && modelOptions.length > 0 && (
+                  <div style={{
+                    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                    borderRadius: 6,
+                    background: "rgba(251, 191, 36, 0.1)",
+                    border: "1px solid rgba(251, 191, 36, 0.3)",
+                    color: "#fbbf24",
+                    fontSize: TYPO.smallFontSize,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: SPACING.xs,
+                  }}>
+                    ⚠️ 请选择模型
                   </div>
                 )}
                 {/* Output kind — read-only, from agent.md */}

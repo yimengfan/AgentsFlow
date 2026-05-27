@@ -85,6 +85,21 @@ export function Workbench() {
     }
   }, [platform]);
 
+  // Auto-save: when any document becomes dirty, schedule a debounced save
+  useEffect(() => {
+    const unsub = useWorkspaceStore.subscribe((state, prevState) => {
+      // Check each document for newly-dirty state
+      for (const [flowPath, doc] of state.documents) {
+        const prevDoc = prevState.documents.get(flowPath);
+        // Only auto-save real flow files (not untitled), and only when transitioning to dirty
+        if (doc.isDirty && (!prevDoc || !prevDoc.isDirty) && !flowPath.startsWith("untitled://")) {
+          useWorkspaceStore.getState().scheduleAutoSave(flowPath, platform);
+        }
+      }
+    });
+    return unsub;
+  }, [platform]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {

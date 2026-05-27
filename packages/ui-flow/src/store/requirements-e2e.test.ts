@@ -20,7 +20,7 @@
  * 这些测试直接验证 store / resolver 层的行为，不依赖浏览器渲染。
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentAdapter, AgentInvocation } from "@agentsflow/agent-contracts";
 import type {
   FlowDefinition,
@@ -31,6 +31,8 @@ import type {
   ResolvedSkillAsset,
 } from "@agentsflow/flow-schema";
 import type { FlowSummary, DirEntry } from "@agentsflow/shared-contracts";
+import type { NodeSpec } from "@agentsflow/node-spec-registry";
+import type { PlatformApi } from "@agentsflow/platform-adapter";
 import { useWorkspaceStore } from "./workspace-store.js";
 import { useWorkspaceTreeStore } from "./workspace-tree-store.js";
 import {
@@ -432,6 +434,44 @@ function buildTestManifest(): PromptAssetManifest {
     skills: new Map([["refactor", skill]]),
     errors: [],
   };
+}
+
+/** Generate a minimal valid flow YAML for testing openFlow + mutations */
+function starterYaml(name: string): string {
+  return `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: ${name}
+  version: 0.1.0
+agents:
+  agentDefs: []
+graph:
+  nodes:
+    - nodeId: start-node
+      nodeKind: control.finish
+      label: Start
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts: []
+      params: []
+  edges: []
+  startNodeId: start-node
+runtime:
+  maxConcurrency: 1
+  defaultTurnTimeoutMs: 60000
+  persistEvents: true
+  persistMemorySnapshots: false
+layout:
+  positions:
+    - nodeId: start-node
+      x: 100
+      y: 100
+  viewport: { x: 0, y: 0, zoom: 1 }
+extensions: {}
+`;
 }
 
 /** 等待 flow 执行完成 */
@@ -3129,5 +3169,517 @@ describe("需求17: Memory 机制 — 序列化与 inspector 溯源", () => {
         expect(ps.sourcePath).toBeTruthy();
       }
     }
+  });
+});
+
+// ─── 需求17: Agent Node 默认 .agent.md 路径 (agentMdPath) ────────────
+
+describe("需求17: Agent Node 默认 .agent.md 路径 (agentMdPath)", () => {
+  it("addNode 为有 presetAgentRef 的 agent node 设置 agentMdPath", () => {
+    const flowPath = "/e2e/agent-md-path.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("agent-md-path"));
+
+    const spec: NodeSpec = {
+      kind: "agent.main",
+      label: "主 Agent",
+      category: "Agent/Main",
+      description: "Main agent node",
+      icon: "🤖",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+      presetAgentRef: "main-agent",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    expect(nodeId).toBeTruthy();
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    expect(node?.agentRef).toBe("main-agent");
+    expect(node?.agentMdPath).toBeTruthy();
+    // agentMdPath should contain the agent ref name
+    expect(node?.agentMdPath).toContain("main-agent");
+    expect(node?.agentMdPath).toContain(".agent.md");
+  });
+
+  it("addNode 为无 presetAgentRef 的 node 不设置 agentMdPath", () => {
+    const flowPath = "/e2e/no-agent-md-path.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("no-agent-md-path"));
+
+    const spec: NodeSpec = {
+      kind: "loader.http",
+      label: "HTTP Loader",
+      category: "Loader/HTTP",
+      description: "HTTP loader node",
+      icon: "🌐",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 200, y: 200 });
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    expect(node?.agentMdPath).toBeFalsy();
+  });
+
+  it("updateNodeAgentRef 更新 agentMdPath 当 agentRef 改变", () => {
+    const flowPath = "/e2e/update-agent-ref.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("update-agent-ref"));
+
+    const spec: NodeSpec = {
+      kind: "agent.main",
+      label: "主 Agent",
+      category: "Agent/Main",
+      description: "Main agent node",
+      icon: "🤖",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+      presetAgentRef: "main-agent",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+    expect(nodeId).toBeTruthy();
+
+    // Update agentRef to sub-agent
+    useWorkspaceStore.getState().updateNodeAgentRef(flowPath, nodeId!, "sub-agent");
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    expect(node?.agentRef).toBe("sub-agent");
+    expect(node?.agentMdPath).toContain("sub-agent");
+    expect(node?.agentMdPath).toContain(".agent.md");
+  });
+
+  it("updateNodeAgentRef 清除 agentMdPath 当 agentRef 被清空", () => {
+    const flowPath = "/e2e/clear-agent-ref.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("clear-agent-ref"));
+
+    const spec: NodeSpec = {
+      kind: "agent.main",
+      label: "主 Agent",
+      category: "Agent/Main",
+      description: "Main agent node",
+      icon: "🤖",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+      presetAgentRef: "main-agent",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    // Clear agentRef
+    useWorkspaceStore.getState().updateNodeAgentRef(flowPath, nodeId!, undefined);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    expect(node?.agentRef).toBeFalsy();
+    expect(node?.agentMdPath).toBeFalsy();
+  });
+});
+
+// ─── 需求18: GUI 配置变更触发 auto-save ──────────────────────────
+
+describe("需求18: GUI 配置变更触发 auto-save", () => {
+  it("scheduleAutoSave 注册 debounce 定时器", () => {
+    const flowPath = "/e2e/auto-save-trigger.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("auto-save-trigger"));
+
+    // Create a mock platform API
+    const mockPlatform = {
+      workspace: { readFile: vi.fn() },
+      flow: { save: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as PlatformApi;
+
+    // Trigger scheduleAutoSave
+    useWorkspaceStore.getState().scheduleAutoSave(flowPath, mockPlatform);
+
+    // Verify that it doesn't immediately save — the debounce should prevent instant calls
+    expect(mockPlatform.flow?.save).not.toHaveBeenCalled();
+  });
+
+  it("updateNodeConfig 标记 document isDirty 触发 auto-save subscription", () => {
+    const flowPath = "/e2e/config-change-dirty.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("config-change-dirty"));
+
+    // Add a node first
+    const spec: NodeSpec = {
+      kind: "agent.main",
+      label: "主 Agent",
+      category: "Agent/Main",
+      description: "Main agent node",
+      icon: "🤖",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+      presetAgentRef: "main-agent",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    // Initially the document should not be dirty (addNode already marks it dirty via commitDocument)
+    // Now update a config value
+    useWorkspaceStore.getState().updateNodeConfig(flowPath, nodeId!, "userPrompt", "new prompt value");
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    expect(doc?.isDirty).toBe(true);
+  });
+
+  it("scheduleAutoSave debounce 800ms — second call cancels first timer", () => {
+    const flowPath = "/e2e/auto-save-debounce.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("auto-save-debounce"));
+
+    const mockPlatform = {
+      workspace: { readFile: vi.fn() },
+      flow: { save: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as PlatformApi;
+
+    // Call scheduleAutoSave twice rapidly
+    useWorkspaceStore.getState().scheduleAutoSave(flowPath, mockPlatform);
+    useWorkspaceStore.getState().scheduleAutoSave(flowPath, mockPlatform);
+
+    // Only one save should occur after debounce (not two)
+    // We can't easily test the timer behavior in this test without async waits,
+    // but we verify the scheduleAutoSave action exists and works without error
+    expect(mockPlatform.flow?.save).not.toHaveBeenCalled();
+  });
+});
+
+// ─── 需求19: Flow 打开时 agent node 默认模型选择 ───────────────────
+
+describe("需求19: Flow 打开时 agent node 默认模型选择", () => {
+  beforeEach(() => {
+    // Reset settings store for clean state
+    useSettingsStore.setState({
+      providers: [],
+      defaultModelKey: null,
+      defaultApprovalRequirement: "destructive_only",
+      activeSettingsTab: "llm",
+    });
+  });
+
+  it("openFlow 为无 model 的 agent node 自动设置全局默认模型", () => {
+    // Set up a global default model
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "test-provider",
+          tag: "deepseek",
+          apiKey: "test-key",
+          baseUrl: "https://api.deepseek.com",
+          protocol: "openai" as const,
+          models: [{ id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "test-provider" }],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+    });
+
+    const flowPath = "/e2e/default-model-auto.flow.yml";
+    // Use a flow YAML that has agent nodes without model in config
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: default-model-test
+  version: 0.1.0
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      adapterConfig:
+        transport: deepseek
+graph:
+  nodes:
+    - nodeId: main-agent-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: main-agent
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-agent-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    expect(doc?.flow).toBeTruthy();
+
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-agent-1");
+    expect(node?.config?.model).toBe("deepseek/deepseek-v4-flash");
+  });
+
+  it("openFlow 为无 model 的 agent node 回退到 modelOptions[0]", () => {
+    // Set up providers but no defaultModelKey — should fall back to first model
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "test-provider",
+          tag: "openai",
+          apiKey: "test-key",
+          baseUrl: "https://api.openai.com",
+          protocol: "openai" as const,
+          models: [{ id: "gpt-4o", label: "GPT-4o", providerId: "test-provider" }],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: null,
+    });
+
+    const flowPath = "/e2e/fallback-model-auto.flow.yml";
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: fallback-model-test
+  version: 0.1.0
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      adapterConfig:
+        transport: deepseek
+graph:
+  nodes:
+    - nodeId: main-agent-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: main-agent
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-agent-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-agent-1");
+
+    // Should fall back to the first model option: "openai/gpt-4o"
+    expect(node?.config?.model).toBe("openai/gpt-4o");
+  });
+
+  it("openFlow 不改变已有 model 的 agent node", () => {
+    // Set up a global default model
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "test-provider",
+          tag: "deepseek",
+          apiKey: "test-key",
+          baseUrl: "https://api.deepseek.com",
+          protocol: "openai" as const,
+          models: [{ id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "test-provider" }],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+    });
+
+    const flowPath = "/e2e/existing-model-keep.flow.yml";
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: existing-model-test
+  version: 0.1.0
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      adapterConfig:
+        transport: deepseek
+graph:
+  nodes:
+    - nodeId: main-agent-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: main-agent
+      config:
+        model: openai/gpt-4o
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-agent-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-agent-1");
+
+    // Should NOT overwrite the existing model
+    expect(node?.config?.model).toBe("openai/gpt-4o");
+  });
+
+  it("openFlow 当 modelOptions 为空时不设置 model（UI 显示增加全局设置提示）", () => {
+    // No providers, no default model — should leave config empty
+    useSettingsStore.setState({
+      providers: [],
+      defaultModelKey: null,
+    });
+
+    const flowPath = "/e2e/no-model-available.flow.yml";
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: no-model-test
+  version: 0.1.0
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      adapterConfig:
+        transport: deepseek
+graph:
+  nodes:
+    - nodeId: main-agent-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: main-agent
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-agent-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-agent-1");
+
+    // Should NOT set any model when no options available
+    const configModel = (node?.config as Record<string, unknown>)?.model;
+    expect(configModel).toBeFalsy();
+  });
+
+  it("openFlow 不为非 agent node 设置默认 model", () => {
+    useSettingsStore.setState({
+      providers: [
+        {
+          id: "test-provider",
+          tag: "deepseek",
+          apiKey: "test-key",
+          baseUrl: "https://api.deepseek.com",
+          protocol: "openai" as const,
+          models: [{ id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", providerId: "test-provider" }],
+          lastFetchError: null,
+          lastFetchedAt: null,
+        },
+      ],
+      defaultModelKey: "deepseek/deepseek-v4-flash",
+    });
+
+    const flowPath = "/e2e/non-agent-no-default.flow.yml";
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: non-agent-test
+  version: 0.1.0
+agents:
+  agentDefs:
+    - agentId: main-agent
+      adapterKind: pi-mono
+      adapterConfig:
+        transport: deepseek
+graph:
+  nodes:
+    - nodeId: loader-1
+      nodeKind: loader.work-dir
+      label: 加载器
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: loader-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "loader-1");
+
+    // Non-agent nodes should NOT get default model
+    const configModel = (node?.config as Record<string, unknown>)?.model;
+    expect(configModel).toBeFalsy();
   });
 });

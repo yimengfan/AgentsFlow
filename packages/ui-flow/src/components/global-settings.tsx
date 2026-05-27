@@ -73,7 +73,8 @@ export function GlobalSettings() {
             onClick={() => !tab.disabled && setActiveTab(tab.id)}
             style={{
               flex: 1,
-              padding: `${SPACING.sm}px 0`,
+              minWidth: 60,
+              padding: `${SPACING.sm}px ${SPACING.xs}px`,
               border: "none",
               background: "transparent",
               cursor: tab.disabled ? "not-allowed" : "pointer",
@@ -89,6 +90,9 @@ export function GlobalSettings() {
                 : "2px solid transparent",
               opacity: tab.disabled ? 0.4 : 1,
               transition: `all ${BUTTON.transitionMs}ms`,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {tab.label}
@@ -169,7 +173,7 @@ function LlmTab() {
   };
 
   return (
-    <div style={{ padding: SPACING.md }}>
+    <div style={{ padding: SPACING.md, width: "100%" }}>
       {/* Default Model Selector */}
       <SettingsSection title="默认模型">
         <select
@@ -471,9 +475,9 @@ function ToolsTab() {
   const setDefaultApprovalRequirement = useSettingsStore((s) => s.setDefaultApprovalRequirement);
 
   return (
-    <div style={{ padding: SPACING.md }}>
+    <div style={{ padding: SPACING.md, width: "100%" }}>
       <SettingsSection title="工具策略">
-        <label style={labelStyle}>
+        <label style={{ display: "flex", flexDirection: "column", gap: SPACING.xs, width: "100%" }}>
           <span style={{ color: TEXT.primary, fontSize: TYPO.fontSize }}>审批要求</span>
           <select
             value={defaultApprovalRequirement}
@@ -494,7 +498,7 @@ function ToolsTab() {
 
 function McpTab() {
   return (
-    <div style={{ padding: SPACING.md }}>
+    <div style={{ padding: SPACING.md, width: "100%" }}>
       <div
         style={{
           textAlign: "center",
@@ -515,6 +519,7 @@ function SettingsSection({ title, children }: { title: string; children: React.R
   return (
     <div
       style={{
+        width: "100%",
         marginBottom: SPACING.lg,
         borderBottom: `1px solid ${BORDER.default}`,
         paddingBottom: SPACING.md,
@@ -549,7 +554,7 @@ function LabeledInput({
   readonly type?: string;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: SPACING.xs }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: SPACING.xs, width: "100%" }}>
       <span style={{ color: TEXT.secondary, fontSize: TYPO.smallFontSize }}>{label}</span>
       <input
         type={type}
@@ -577,6 +582,7 @@ const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: SPACING.xs,
+  width: "100%",
 };
 
 const selectStyle: React.CSSProperties = {
@@ -588,6 +594,7 @@ const selectStyle: React.CSSProperties = {
   padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
   outline: "none",
   width: "100%",
+  boxSizing: "border-box",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -598,6 +605,8 @@ const inputStyle: React.CSSProperties = {
   fontSize: TYPO.fontSize,
   padding: `${BUTTON.paddingY}px ${BUTTON.paddingX}px`,
   outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 const addButtonStyle: React.CSSProperties = {

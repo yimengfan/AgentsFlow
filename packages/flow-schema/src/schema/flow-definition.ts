@@ -214,6 +214,8 @@ export const NodeDefSchema = z.object({
   agentId: z.string().optional(),
   /** Reference to an external .agent.md agentId; takes precedence over agentId when present */
   agentRef: z.string().optional(),
+  /** Path to the .agent.md file that this node is bound to (e.g. ".agents-flow/agents/main-agent.agent.md") */
+  agentMdPath: z.string().optional(),
   /** Node-specific config (varies by nodeType) */
   config: z.record(z.unknown()).optional().default({}),
   /** Input port definitions */
