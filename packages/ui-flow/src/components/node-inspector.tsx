@@ -480,6 +480,7 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
 
   const [promptPreviewExpanded, setPromptPreviewExpanded] = useState(false);
   const [sourceFileViewer, setSourceFileViewer] = useState<{ readonly filePath: string; readonly content: string } | null>(null);
+  const [selectedPromptFileIdx, setSelectedPromptFileIdx] = useState<number | null>(null);
 
   const platform = usePlatform();
   const rootPath = useWorkspaceTreeStore((s) => s.rootPath);
@@ -942,65 +943,45 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
                   };
                   const icon = scopeIcon[seg.scope] ?? "📝";
                   const canTrack = Boolean(seg.sourcePath);
+                  const isSelected = selectedPromptFileIdx === idx;
                   return (
                     <button
                       key={`seg:${idx}:${seg.scope}:${seg.label}`}
                       type="button"
                       onClick={() => {
                         if (canTrack) {
+                          setSelectedPromptFileIdx(isSelected ? null : idx);
                           handleRevealSourceFile(seg.sourcePath);
                         }
                       }}
                       style={{
                         textAlign: "left",
                         width: "100%",
-                        background: SURFACE.editor,
+                        background: isSelected ? "rgba(96, 165, 250, 0.08)" : SURFACE.editor,
                         color: TEXT.primary,
-                        border: `1px solid ${BORDER.default}`,
+                        border: isSelected ? "1px solid rgba(96, 165, 250, 0.4)" : `1px solid ${BORDER.default}`,
                         borderRadius: 6,
                         padding: `${SPACING.xs}px ${SPACING.sm}px`,
                         cursor: canTrack ? "pointer" : "default",
-                        display: "grid",
-                        gap: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: SPACING.xs,
+                        transition: "background 0.15s, border-color 0.15s",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: SPACING.xs }}>
-                        <span>{icon}</span>
-                        <span style={{ fontSize: TYPO.smallFontSize, color: TEXT.secondary, fontWeight: 500 }}>{seg.label}</span>
-                        <span style={{
-                          marginLeft: "auto",
-                          fontSize: 10,
-                          padding: "1px 5px",
-                          borderRadius: 4,
-                          background: seg.scope === "run-input" ? "rgba(251, 191, 36, 0.15)" : "rgba(96, 165, 250, 0.15)",
-                          color: seg.scope === "run-input" ? "#fbbf24" : "#60a5fa",
-                          border: `1px solid ${seg.scope === "run-input" ? "rgba(251, 191, 36, 0.3)" : "rgba(96, 165, 250, 0.3)"}`,
-                        }}>
-                          {seg.scope}
-                        </span>
-                      </div>
-                      {seg.sourcePath ? (
-                        <div style={{ fontSize: 11, color: TEXT.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                          {seg.sourcePath}
-                        </div>
-                      ) : null}
-                      {seg.content ? (
-                        <div
-                          style={{
-                            marginTop: 2,
-                            fontSize: TYPO.smallFontSize,
-                            color: TEXT.muted,
-                            whiteSpace: "pre-wrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                          }}
-                        >
-                          {seg.content}
-                        </div>
-                      ) : null}
+                      <span>{icon}</span>
+                      <span style={{ fontSize: TYPO.smallFontSize, color: isSelected ? TEXT.primary : TEXT.secondary, fontWeight: 500 }}>{seg.label}</span>
+                      <span style={{
+                        marginLeft: "auto",
+                        fontSize: 10,
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        background: seg.scope === "run-input" ? "rgba(251, 191, 36, 0.15)" : "rgba(96, 165, 250, 0.15)",
+                        color: seg.scope === "run-input" ? "#fbbf24" : "#60a5fa",
+                        border: `1px solid ${seg.scope === "run-input" ? "rgba(251, 191, 36, 0.3)" : "rgba(96, 165, 250, 0.3)"}`,
+                      }}>
+                        {seg.scope}
+                      </span>
                     </button>
                   );
                 }) : (
@@ -1118,7 +1099,7 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
         <SourceFileViewer
           filePath={sourceFileViewer.filePath}
           content={sourceFileViewer.content}
-          onClose={() => setSourceFileViewer(null)}
+          onClose={() => { setSourceFileViewer(null); setSelectedPromptFileIdx(null); }}
         />
       ) : null}
     </div>
