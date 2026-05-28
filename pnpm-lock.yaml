@@ -172,6 +172,9 @@ importers:
         specifier: workspace:*
         version: link:../shared-contracts
     devDependencies:
+      '@agentsflow/testing-kit':
+        specifier: workspace:*
+        version: link:../testing-kit
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.19)(yaml@2.9.0)

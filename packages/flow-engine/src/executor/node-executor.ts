@@ -83,10 +83,13 @@ export class NodeExecutor {
   ): Promise<NodeExecutionResult> {
     const startedAt = Date.now();
 
+    // Use resolved agentId from scheduler (agentRef resolution) when available
+    const effectiveAgentId = context.resolvedAgentId ?? node.agentId;
+
     // Find the agent definition
-    const agentDef = flow.agents.agentDefs.find((a) => a.agentId === node.agentId);
-    if (!agentDef && node.agentId) {
-      throw new Error(`Agent "${node.agentId}" not found in flow "${flow.meta.name}"`);
+    const agentDef = flow.agents.agentDefs.find((a) => a.agentId === effectiveAgentId);
+    if (!agentDef && effectiveAgentId) {
+      throw new Error(`Agent "${effectiveAgentId}" not found in flow "${flow.meta.name}"`);
     }
 
     // Determine turnMode: from context snapshot (set by scheduler) or fallback to "normal"
@@ -118,7 +121,7 @@ export class NodeExecutor {
       invocationId: `inv-${context.runId}-${node.nodeId}-${Date.now()}`,
       runId: context.runId,
       nodeId: node.nodeId,
-      agentId: node.agentId ?? "",
+      agentId: effectiveAgentId ?? "",
       adapterKind: adapter.metadata.adapterKind,
       ...(sessionId !== undefined ? { sessionId } : {}),
       turnMode,
@@ -141,7 +144,7 @@ export class NodeExecutor {
           eventType: "agent_stream_delta" as AgentEventType,
           runId: context.runId,
           nodeId: node.nodeId,
-          ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+          ...(effectiveAgentId !== undefined ? { agentId: effectiveAgentId } : {}),
           invocationId: invocation.invocationId,
           payload: delta as unknown as Record<string, unknown>,
         });
@@ -153,7 +156,7 @@ export class NodeExecutor {
       eventType: "agent_selected" as AgentEventType,
       runId: context.runId,
       nodeId: node.nodeId,
-      ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+      ...(effectiveAgentId !== undefined ? { agentId: effectiveAgentId } : {}),
       invocationId: invocation.invocationId,
       payload: { adapterKind: adapter.metadata.adapterKind, turnMode },
     });
@@ -189,7 +192,7 @@ export class NodeExecutor {
         eventType: "turn_failed" as AgentEventType,
         runId: context.runId,
         nodeId: node.nodeId,
-        ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+        ...(effectiveAgentId !== undefined ? { agentId: effectiveAgentId } : {}),
         invocationId: invocation.invocationId,
         payload: {
           status: "failed",
@@ -211,7 +214,7 @@ export class NodeExecutor {
         eventType: "turn_completed" as AgentEventType,
         runId: context.runId,
         nodeId: node.nodeId,
-        ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+        ...(effectiveAgentId !== undefined ? { agentId: effectiveAgentId } : {}),
         invocationId: invocation.invocationId,
         payload: {
           status: result.status,
@@ -235,7 +238,7 @@ export class NodeExecutor {
         eventType: "turn_failed" as AgentEventType,
         runId: context.runId,
         nodeId: node.nodeId,
-        ...(node.agentId !== undefined ? { agentId: node.agentId } : {}),
+        ...(effectiveAgentId !== undefined ? { agentId: effectiveAgentId } : {}),
         invocationId: invocation.invocationId,
         payload: {
           status: result.status,
@@ -371,7 +374,7 @@ export class NodeExecutor {
       return context.sessionId;
     }
 
-    const agentId = node.agentId ?? agentDef?.agentId;
+    const agentId = context.resolvedAgentId ?? node.agentId ?? agentDef?.agentId;
     if (!agentId) {
       return undefined;
     }
@@ -551,4 +554,10 @@ export interface RunContextSnapshot {
   readonly turnMode?: TurnMode;
   /** Assembled prompt package from .agents-flow resolver (takes priority over legacy prompt) */
   readonly promptPackage?: ProviderPromptPackage;
+  /**
+   * Resolved agentId for this node execution.
+   * Set by the scheduler after resolving agentId/agentRef/config.agentId.
+   * Takes precedence over node.agentId when present.
+   */
+  readonly resolvedAgentId?: string;
 }

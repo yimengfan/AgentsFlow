@@ -26,6 +26,7 @@
     "@agentsflow/prompt-asset-resolver": "workspace:*"
   },
   "devDependencies": {
+    "@agentsflow/testing-kit": "workspace:*",
     "vitest": "^3.0.0"
   },
   "license": "MIT",

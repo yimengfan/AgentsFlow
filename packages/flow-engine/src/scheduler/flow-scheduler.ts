@@ -229,8 +229,33 @@ export class FlowScheduler {
     ctx: RunContext,
     input: Record<string, unknown>,
   ): Promise<void> {
-    // Determine agentId: from node.agentId or from node config
-    const agentId = node.agentId ?? (node.config as Record<string, unknown>)?.agentId as string | undefined;
+    // Determine agentId: resolve from multiple sources in priority order
+    // 1. node.agentId — explicit executable binding
+    // 2. node.config.agentId — fallback from config
+    // 3. node.agentRef — resolve via promptAssetManifest or agentDefs lookup
+    let agentId = node.agentId ?? (node.config as Record<string, unknown>)?.agentId as string | undefined;
+
+    // If no direct agentId, try to resolve agentRef to an agentId
+    if (!agentId && node.agentRef) {
+      // Try promptAssetManifest first — .agents-flow/ agents have agentId
+      if (this.promptAssetManifest) {
+        const agentAsset = this.promptAssetManifest.agents.get(node.agentRef);
+        if (agentAsset?.agentId) {
+          agentId = agentAsset.agentId;
+        }
+      }
+      // Fallback: check if agentRef matches an agentDef directly
+      // (common case: agentRef = "main-agent" matches agentDef.agentId = "main-agent")
+      if (!agentId) {
+        const matchingDef = ctx.flow.agents.agentDefs.find(
+          (a) => a.agentId === node.agentRef,
+        );
+        if (matchingDef) {
+          agentId = matchingDef.agentId;
+        }
+      }
+    }
+
     if (!agentId) {
       throw new Error(`Agent node "${node.nodeId}" has no agentId`);
     }
@@ -344,6 +369,7 @@ export class FlowScheduler {
       iteration: ctx.iteration,
       turnMode: turnMode as "normal" | "plan" | "evaluate" | "summarize",
       ...(promptPackage !== undefined ? { promptPackage } : {}),
+      resolvedAgentId: agentId,
     };
 
     // Execute the node
