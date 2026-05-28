@@ -766,8 +766,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       autoSaveTimers.delete(flowPath);
       try {
         await get().saveFlow(flowPath, platform);
-      } catch {
+      } catch (err) {
         // Auto-save failure is non-critical; user can still save manually
+        // But log it so the failure is discoverable in dev tools
+        console.warn(`[auto-save] Failed to save ${flowPath}:`, err);
       }
     }, AUTO_SAVE_DELAY_MS);
 

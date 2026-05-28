@@ -197,6 +197,61 @@ function workspaceApiPlugin(): Plugin {
           return;
         }
 
+        // PUT /api/flows/:flowPath — save a flow YAML by its full path
+        if (url.startsWith("/api/flows/") && req.method === "PUT") {
+          try {
+            const encodedPath = url.slice("/api/flows/".length);
+            const flowPath = decodeURIComponent(encodedPath);
+
+            if (!flowPath) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "flowPath required" }));
+              return;
+            }
+
+            const body = await new Promise<string>((resolve) => {
+              let data = "";
+              req.on("data", (chunk) => { data += chunk; });
+              req.on("end", () => { resolve(data); });
+            });
+            const { content } = JSON.parse(body) as { content: string };
+            await fs.writeFile(flowPath, content, "utf-8");
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+          return;
+        }
+
+        // POST /api/flows/validate — validate a flow YAML
+        if (url === "/api/flows/validate" && req.method === "POST") {
+          try {
+            const body = await new Promise<string>((resolve) => {
+              let data = "";
+              req.on("data", (chunk) => { data += chunk; });
+              req.on("end", () => { resolve(data); });
+            });
+            const { content } = JSON.parse(body) as { content: string };
+            const parsed = parseFlowYaml(content);
+            const result = safeValidateFlowDefinition(parsed);
+            if (result.success) {
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ valid: true, errors: [] }));
+            } else {
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ valid: false, errors: result.error.errors.map((e) => e.message) }));
+            }
+          } catch (err) {
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ valid: false, errors: [String(err)] }));
+          }
+          return;
+        }
+
         // GET /api/flows?workspacePath=... — scan workspace for flow YAML files
         if (url.startsWith("/api/flows") && req.method === "GET") {
           try {

@@ -64,7 +64,7 @@
 
 - 类型: 平台偏差 / 闭环断裂
 - 严重度: P0
-- 状态: Discovered
+- 状态: Fixing
 - 所属旅程 / 模块: Web Workbench -> Flow save / validate
 - 触发条件: Web 模式下调用 `platform.flow.save()` 或 `platform.flow.validate()`
 - 预期结果: HTTP 适配层与 dev server 暴露同一套保存 / 校验 contract
@@ -78,7 +78,7 @@
   - Flow save path manual / integration verification
 - 推荐修复类别: 契约对齐
 - PRD / Roadmap 关联: O1 / KR1.4，O4 / KR4.2
-- 下一步: 对齐 HTTP adapter 与 Web backend contract，并增加平台边界验证
+- 下一步: 已在 vite.config.ts 中补充 `PUT /api/flows/:flowPath` 和 `POST /api/flows/validate` 路由；需验证完整链路
 
 ### AF-D003 Agent `turnMode` 语义漂移
 
