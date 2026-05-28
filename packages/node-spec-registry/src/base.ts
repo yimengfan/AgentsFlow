@@ -46,6 +46,12 @@ export interface NodeSpec {
   readonly flowDirection: "horizontal" | "vertical";
   /** UI hint for pre-populating the agent binding dropdown. Does not affect runtime. */
   readonly presetAgentRef?: string;
+  /**
+   * Preferred agent outputKind when resolving from manifest.
+   * Used when presetAgentRef doesn't match any agent in the manifest.
+   * e.g. "plan" for agent.main, "text" for agent.sub
+   */
+  readonly defaultAgentOutputKind?: "text" | "plan" | "score";
 }
 
 // ─── NodeSpecBase — abstract base class for individual node definitions ───
@@ -92,4 +98,5 @@ export abstract class NodeSpecBase implements NodeSpec {
   readonly maxInstances: number = 0;
   readonly flowDirection: "horizontal" | "vertical" = "horizontal";
   readonly presetAgentRef?: string;
+  readonly defaultAgentOutputKind?: "text" | "plan" | "score";
 }

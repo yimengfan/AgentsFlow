@@ -3683,3 +3683,314 @@ extensions: {}
     expect(configModel).toBeFalsy();
   });
 });
+
+// ─── 需求20: Agent Node 默认 .agent.md 路径 — outputKind 回退解析 ──────
+
+describe("需求20: Agent Node agentRef 按 outputKind 回退解析", () => {
+  /** Build a manifest with talos-code-plan (plan), talos-code-execute (text), talos-code-evaluate (score) */
+  function buildTalosManifest(): PromptAssetManifest {
+    const planAgent: ResolvedAgentAsset = {
+      agentId: "talos-code-plan",
+      name: "Talos Code Plan",
+      description: "Planning agent",
+      outputKind: "plan",
+      adapterKind: "pi-mono",
+      tools: [],
+      userInvocable: false,
+      includes: { instructions: [], skills: [], globalSystemPrompt: true },
+      body: "You are a planning agent.",
+      sourcePath: ".agents-flow/agents/Talos-Code-Plan.agent.md",
+    };
+    const executeAgent: ResolvedAgentAsset = {
+      agentId: "talos-code-execute",
+      name: "Talos Code Execute",
+      description: "Execution agent",
+      outputKind: "text",
+      adapterKind: "pi-mono",
+      tools: [],
+      userInvocable: false,
+      includes: { instructions: [], skills: [], globalSystemPrompt: true },
+      body: "You are an execution agent.",
+      sourcePath: ".agents-flow/agents/talos-code-execute.agent.md",
+    };
+    const evaluateAgent: ResolvedAgentAsset = {
+      agentId: "talos-code-evaluate",
+      name: "Talos Code Evaluate",
+      description: "Evaluation agent",
+      outputKind: "score",
+      adapterKind: "pi-mono",
+      tools: [],
+      userInvocable: false,
+      includes: { instructions: [], skills: [], globalSystemPrompt: true },
+      body: "You are an evaluation agent.",
+      sourcePath: ".agents-flow/agents/talos-code-evaluate.agent.md",
+    };
+    return {
+      globalSystemPrompt: "Global prompt.",
+      agents: new Map([
+        ["talos-code-plan", planAgent],
+        ["talos-code-execute", executeAgent],
+        ["talos-code-evaluate", evaluateAgent],
+      ]),
+      instructions: new Map(),
+      skills: new Map(),
+      errors: [],
+    };
+  }
+
+  it("addNode: presetAgentRef 不匹配 manifest 时，按 defaultAgentOutputKind 回退", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/outputkind-fallback.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("outputkind-fallback"));
+
+    // AgentMainSpec has presetAgentRef="main-agent" (not in manifest) and defaultAgentOutputKind="plan"
+    const spec = new AgentMainSpec();
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    // Should resolve to talos-code-plan (outputKind="plan") instead of "main-agent"
+    expect(node?.agentRef).toBe("talos-code-plan");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/Talos-Code-Plan.agent.md");
+  });
+
+  it("addNode: AgentSubSpec 回退到 outputKind='text' 的 agent", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/outputkind-sub-fallback.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("outputkind-sub-fallback"));
+
+    // AgentSubSpec has presetAgentRef="sub-agent" (not in manifest) and defaultAgentOutputKind="text"
+    const spec = new AgentSubSpec();
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    // Should resolve to talos-code-execute (outputKind="text") instead of "sub-agent"
+    expect(node?.agentRef).toBe("talos-code-execute");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/talos-code-execute.agent.md");
+  });
+
+  it("addNode: presetAgentRef 精确匹配 manifest 时，不使用 outputKind 回退", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/exact-match-no-fallback.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("exact-match-no-fallback"));
+
+    // Use a spec whose presetAgentRef matches an agent in the manifest
+    const spec: NodeSpec = {
+      kind: "agent.main",
+      label: "主 Agent",
+      category: "Agent/Main",
+      description: "Main agent node",
+      icon: "🤖",
+      inputPorts: [{ portId: "in", dataType: "flow" as const, required: true }],
+      outputPorts: [{ portId: "out", dataType: "flow" as const, required: true }],
+      params: [],
+      tags: [],
+      visible: true,
+      maxInstances: 0,
+      flowDirection: "horizontal",
+      presetAgentRef: "talos-code-plan",
+      defaultAgentOutputKind: "plan",
+    };
+
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    // Exact match should take priority
+    expect(node?.agentRef).toBe("talos-code-plan");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/Talos-Code-Plan.agent.md");
+  });
+
+  it("addNode: 无 manifest 时回退到 constructed path", () => {
+    // No manifest set
+    useWorkspaceStore.getState().setPromptAssetManifest(null);
+
+    const flowPath = "/e2e/no-manifest-fallback.flow.yml";
+    useWorkspaceStore.getState().openFlow(flowPath, starterYaml("no-manifest-fallback"));
+
+    const spec = new AgentMainSpec();
+    const nodeId = useWorkspaceStore.getState().addNode(flowPath, spec, { x: 100, y: 100 });
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === nodeId);
+
+    // Should fall back to presetAgentRef with constructed path
+    expect(node?.agentRef).toBe("main-agent");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/main-agent.agent.md");
+  });
+
+  it("openFlow: stale agentRef 按 outputKind 回退解析", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/stale-agentref-openflow.flow.yml";
+    // Flow YAML has agentRef="main-agent" which doesn't exist in manifest
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: stale-agentref-test
+  version: 0.1.0
+agents:
+  agentDefs: []
+graph:
+  nodes:
+    - nodeId: main-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: main-agent
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+    - nodeId: sub-1
+      nodeKind: agent.sub
+      label: 子 Agent
+      agentRef: sub-agent
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    expect(doc?.flow).toBeTruthy();
+
+    // main-1 (agent.main, defaultAgentOutputKind="plan") should resolve to talos-code-plan
+    const mainNode = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-1");
+    expect(mainNode?.agentRef).toBe("talos-code-plan");
+    expect(mainNode?.agentMdPath).toBe(".agents-flow/agents/Talos-Code-Plan.agent.md");
+
+    // sub-1 (agent.sub, defaultAgentOutputKind="text") should resolve to talos-code-execute
+    const subNode = doc?.flow?.graph.nodes.find((n) => n.nodeId === "sub-1");
+    expect(subNode?.agentRef).toBe("talos-code-execute");
+    expect(subNode?.agentMdPath).toBe(".agents-flow/agents/talos-code-execute.agent.md");
+  });
+
+  it("openFlow: valid agentRef 不被 outputKind 回退覆盖", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/valid-agentref-no-override.flow.yml";
+    // Flow YAML has agentRef="talos-code-execute" which exists in manifest
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: valid-agentref-test
+  version: 0.1.0
+agents:
+  agentDefs: []
+graph:
+  nodes:
+    - nodeId: main-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: talos-code-execute
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-1");
+
+    // agentRef is valid in manifest — should NOT be overridden by outputKind fallback
+    expect(node?.agentRef).toBe("talos-code-execute");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/talos-code-execute.agent.md");
+  });
+
+  it("openFlow: valid agentRef 但 stale agentMdPath 被修正", () => {
+    const manifest = buildTalosManifest();
+    useWorkspaceStore.getState().setPromptAssetManifest(manifest);
+
+    const flowPath = "/e2e/stale-mdpath-fix.flow.yml";
+    // Flow YAML has correct agentRef but wrong agentMdPath
+    const yaml = `agentsflow: true
+meta:
+  schemaVersion: '1.0'
+  name: stale-mdpath-test
+  version: 0.1.0
+agents:
+  agentDefs: []
+graph:
+  nodes:
+    - nodeId: main-1
+      nodeKind: agent.main
+      label: 主 Agent
+      agentRef: talos-code-plan
+      agentMdPath: .agents-flow/agents/wrong-path.agent.md
+      config: {}
+      inputPorts:
+        - portId: in
+          dataType: flow
+          required: true
+      outputPorts:
+        - portId: out
+          dataType: flow
+      params: []
+  edges: []
+  startNodeId: main-1
+runtime: {}
+layout: {}
+extensions: {}
+`;
+
+    useWorkspaceStore.getState().openFlow(flowPath, yaml);
+
+    const doc = useWorkspaceStore.getState().documents.get(flowPath);
+    const node = doc?.flow?.graph.nodes.find((n) => n.nodeId === "main-1");
+
+    // agentRef is valid — agentMdPath should be corrected to the manifest's sourcePath
+    expect(node?.agentRef).toBe("talos-code-plan");
+    expect(node?.agentMdPath).toBe(".agents-flow/agents/Talos-Code-Plan.agent.md");
+  });
+
+  it("AgentMainSpec has defaultAgentOutputKind='plan'", () => {
+    const spec = new AgentMainSpec();
+    expect(spec.defaultAgentOutputKind).toBe("plan");
+  });
+
+  it("AgentSubSpec has defaultAgentOutputKind='text'", () => {
+    const spec = new AgentSubSpec();
+    expect(spec.defaultAgentOutputKind).toBe("text");
+  });
+});

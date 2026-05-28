@@ -12,7 +12,8 @@ import { create } from "zustand";
 
 import type { FlowDefinition, NodeDef, EdgeDef, PromptAssetManifest } from "@agentsflow/flow-schema";
 import type { FlowSummary } from "@agentsflow/shared-contracts";
-import type { NodeSpec } from "@agentsflow/node-spec-registry";
+import type { NodeSpec, NodeSpecRegistry } from "@agentsflow/node-spec-registry";
+import { createDefaultRegistry } from "@agentsflow/node-spec-registry";
 import type { PlatformApi } from "@agentsflow/platform-adapter";
 import {
   parseFlowYaml,
@@ -202,6 +203,70 @@ function applyDefaultModelToAgentNodes(flow: FlowDefinition): FlowDefinition {
   };
 }
 
+/** Lazy singleton for the default node spec registry (used by resolveStaleAgentRefs). */
+let _defaultRegistry: NodeSpecRegistry | undefined;
+function getDefaultRegistry(): NodeSpecRegistry {
+  if (!_defaultRegistry) _defaultRegistry = createDefaultRegistry();
+  return _defaultRegistry;
+}
+
+/**
+ * When a flow is opened, resolve stale agentRef/agentMdPath values.
+ * If a node's agentRef doesn't match any agent in the manifest,
+ * try to find a matching agent by the node spec's defaultAgentOutputKind.
+ * Also updates agentMdPath to the correct sourcePath from the manifest.
+ */
+function resolveStaleAgentRefs(flow: FlowDefinition, manifest: PromptAssetManifest | null): FlowDefinition {
+  if (!manifest || manifest.agents.size === 0) return flow;
+
+  let anyChanged = false;
+
+  const updatedNodes = flow.graph.nodes.map((node) => {
+    // Only agent nodes need resolution
+    const isAgent = node.nodeKind?.startsWith("agent.") ?? false;
+    if (!isAgent) return node;
+
+    const currentRef = node.agentRef;
+    if (!currentRef) return node; // No agentRef set — user will pick manually
+
+    // Check if current agentRef exists in manifest
+    const manifestAgent = manifest.agents.get(currentRef);
+    if (manifestAgent) {
+      // agentRef is valid — just ensure agentMdPath is up-to-date
+      const correctPath = manifestAgent.sourcePath;
+      if (node.agentMdPath !== correctPath) {
+        anyChanged = true;
+        return { ...node, agentMdPath: correctPath };
+      }
+      return node;
+    }
+
+    // agentRef is stale — try to find a matching agent by node spec's defaultAgentOutputKind
+    const spec = node.nodeKind ? getDefaultRegistry().get(node.nodeKind) : undefined;
+    if (spec?.defaultAgentOutputKind) {
+      for (const [agentId, agent] of manifest.agents) {
+        if (agent.outputKind === spec.defaultAgentOutputKind) {
+          anyChanged = true;
+          return { ...node, agentRef: agentId, agentMdPath: agent.sourcePath };
+        }
+      }
+    }
+
+    // No match found — leave as-is (user can manually select)
+    return node;
+  });
+
+  if (!anyChanged) return flow;
+
+  return {
+    ...flow,
+    graph: {
+      ...flow.graph,
+      nodes: updatedNodes,
+    },
+  };
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   flowList: [],
   documents: new Map(),
@@ -228,7 +293,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const validation = safeValidateFlowDefinition(parsed);
       if (validation.success) {
         // Apply default model to agent nodes that have no model configured
-        flow = applyDefaultModelToAgentNodes(parsed);
+        let resolved = applyDefaultModelToAgentNodes(parsed);
+        // Resolve stale agentRef/agentMdPath from manifest
+        resolved = resolveStaleAgentRefs(resolved, get().promptAssetManifest);
+        flow = resolved;
       } else {
         validationErrors = validation.error.errors.map((e) => e.message);
       }
@@ -424,12 +492,36 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const nodeId = `${kindPrefix}_${suffix}`;
 
     // Build NodeDef from spec
-    // Resolve agentMdPath from presetAgentRef + promptAssetManifest
-    const defaultAgentMdPath = spec.presetAgentRef && get().promptAssetManifest
-      ? get().promptAssetManifest!.agents.get(spec.presetAgentRef)?.sourcePath ?? `.agents-flow/agents/${spec.presetAgentRef}.agent.md`
-      : spec.presetAgentRef
-        ? `.agents-flow/agents/${spec.presetAgentRef}.agent.md`
-        : undefined;
+    // Resolve agentRef + agentMdPath from presetAgentRef + promptAssetManifest
+    const manifest = get().promptAssetManifest;
+    let resolvedAgentRef: string | undefined;
+    let resolvedAgentMdPath: string | undefined;
+
+    if (manifest && spec.presetAgentRef) {
+      // 1. Try exact match by presetAgentRef
+      const exactMatch = manifest.agents.get(spec.presetAgentRef);
+      if (exactMatch) {
+        resolvedAgentRef = spec.presetAgentRef;
+        resolvedAgentMdPath = exactMatch.sourcePath;
+      } else if (spec.defaultAgentOutputKind) {
+        // 2. Fallback: find best-matching agent by outputKind
+        for (const [agentId, agent] of manifest.agents) {
+          if (agent.outputKind === spec.defaultAgentOutputKind) {
+            resolvedAgentRef = agentId;
+            resolvedAgentMdPath = agent.sourcePath;
+            break;
+          }
+        }
+      }
+      // 3. If still no match, use presetAgentRef with constructed path
+      if (!resolvedAgentRef) {
+        resolvedAgentRef = spec.presetAgentRef;
+        resolvedAgentMdPath = `.agents-flow/agents/${spec.presetAgentRef}.agent.md`;
+      }
+    } else if (spec.presetAgentRef) {
+      resolvedAgentRef = spec.presetAgentRef;
+      resolvedAgentMdPath = `.agents-flow/agents/${spec.presetAgentRef}.agent.md`;
+    }
 
     const newNode: NodeDef = {
       nodeId,
@@ -440,10 +532,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       inputPorts: [...spec.inputPorts],
       outputPorts: [...spec.outputPorts],
       params: [...spec.params],
-      // Set agentRef from spec's presetAgentRef (e.g. "main-agent", "sub-agent")
-      ...(spec.presetAgentRef ? { agentRef: spec.presetAgentRef } : {}),
+      // Set agentRef — resolved from manifest or presetAgentRef
+      ...(resolvedAgentRef ? { agentRef: resolvedAgentRef } : {}),
       // Set agentMdPath — the .agent.md file path for this agent binding
-      ...(defaultAgentMdPath ? { agentMdPath: defaultAgentMdPath } : {}),
+      ...(resolvedAgentMdPath ? { agentMdPath: resolvedAgentMdPath } : {}),
     };
 
     // Add position to layout
