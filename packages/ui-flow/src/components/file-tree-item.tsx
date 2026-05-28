@@ -60,11 +60,13 @@ export function FileTreeItem({ node, depth, onContextMenu }: FileTreeItemProps) 
   const platform = usePlatform();
   const openFlow = useWorkspaceStore((s) => s.openFlow);
   const activeFlowPath = useWorkspaceStore((s) => s.activeFlowPath);
+  const highlightedFilePath = useWorkspaceTreeStore((s) => s.highlightedFilePath);
   const setNodeChildren = useWorkspaceTreeStore((s) => s.setNodeChildren);
   const toggleExpand = useWorkspaceTreeStore((s) => s.toggleExpand);
   const updateNode = useWorkspaceTreeStore((s) => s.updateNode);
 
   const isActive = !node.isDirectory && node.path === activeFlowPath;
+  const isHighlighted = !node.isDirectory && node.path === highlightedFilePath;
   const isExpanded = node.isDirectory && node.isExpanded;
   const isLoading = node.isDirectory && node.isLoading;
 
@@ -155,21 +157,21 @@ export function FileTreeItem({ node, depth, onContextMenu }: FileTreeItemProps) 
           height: 22,
           paddingLeft: depth * 16 + 4,
           paddingRight: SPACING.sm,
-          background: isActive ? ACCENT.indigo + "26" : "transparent",
-          borderLeft: isActive ? `2px solid ${BORDER.active}` : "2px solid transparent",
-          color: isActive ? TEXT.primary : node.isFlowFile ? ACCENT.indigo : TEXT.secondary,
+          background: isActive ? ACCENT.indigo + "26" : isHighlighted ? "rgba(96, 165, 250, 0.08)" : "transparent",
+          borderLeft: isActive ? `2px solid ${BORDER.active}` : isHighlighted ? `2px solid rgba(96, 165, 250, 0.4)` : "2px solid transparent",
+          color: isActive ? TEXT.primary : isHighlighted ? "#60a5fa" : node.isFlowFile ? ACCENT.indigo : TEXT.secondary,
           cursor: "pointer",
           fontSize: TYPO.fontSize,
           userSelect: "none",
           transition: "background-color 80ms ease",
         }}
         onMouseEnter={(e) => {
-          if (!isActive) {
+          if (!isActive && !isHighlighted) {
             (e.currentTarget as HTMLDivElement).style.background = SURFACE.hover;
           }
         }}
         onMouseLeave={(e) => {
-          if (!isActive) {
+          if (!isActive && !isHighlighted) {
             (e.currentTarget as HTMLDivElement).style.background = "transparent";
           }
         }}
@@ -220,7 +222,7 @@ export function FileTreeItem({ node, depth, onContextMenu }: FileTreeItemProps) 
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            fontWeight: isActive ? 500 : 400,
+            fontWeight: isActive ? 500 : isHighlighted ? 500 : 400,
           }}
         >
           {node.name}

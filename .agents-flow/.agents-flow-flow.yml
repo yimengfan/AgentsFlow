@@ -1,6 +1,6 @@
 agentsflow: true
 meta:
-  schemaVersion: '1.0'
+  schemaVersion: "1.0"
   name: .agents-flow-flow
   description: 默认流程：主Agent生成计划 → 子Agent执行 → 主Agent评分 → 结束
   version: 0.1.0
@@ -13,8 +13,6 @@ agents:
       modelProfile:
         model: deepseek-v4-flash
         systemPrompt: You are a planning and evaluation agent.
-      adapterConfig:
-        transport: deepseek
       toolPolicy:
         allowedCapabilities: []
         blockedTools: []
@@ -35,13 +33,13 @@ agents:
         sessionMs: 300000
       budgets:
         maxSteps: 10
+      adapterConfig:
+        transport: deepseek
     - agentId: sub-agent
       adapterKind: pi-mono
       modelProfile:
         model: deepseek-v4-flash
         systemPrompt: You are an execution agent. Carry out the plan.
-      adapterConfig:
-        transport: deepseek
       toolPolicy:
         allowedCapabilities: []
         blockedTools: []
@@ -61,12 +59,13 @@ agents:
         sessionMs: 300000
       budgets:
         maxSteps: 20
+      adapterConfig:
+        transport: deepseek
 graph:
   nodes:
     - nodeId: loader-workdir
       nodeKind: loader.work-dir
       label: 加载工作目录
-      category: Loader/WorkDir
       config: {}
       inputPorts:
         - portId: in
@@ -75,110 +74,134 @@ graph:
       outputPorts:
         - portId: out
           dataType: flow
+          required: true
         - portId: data
           dataType: documents
+          required: true
       params: []
+      category: Loader/WorkDir
     - nodeId: main-prompt
       nodeKind: agent.main
-      label: 主Agent - Plan
-      category: Agent/Main
-      agentId: main-agent
+      label: 主 Agent
+      agentRef: talos-code-plan
       config:
         turnMode: plan
         userPrompt: 请根据用户输入生成一个简洁可执行的计划，输出重点步骤。
+        model: deepseek.com/deepseek-v4-pro
       inputPorts:
         - portId: in
           dataType: flow
+          required: true
         - portId: prompt
           dataType: prompt
+          required: true
         - portId: data
           dataType: any
+          required: true
       outputPorts:
         - portId: out
           dataType: flow
+          required: true
         - portId: result
           dataType: string
+          required: true
         - portId: plan
           dataType: plan
+          required: true
       params: []
+      category: Agent/Main
+      agentMdPath: .agents-flow/agents/Talos-Code-Plan.agent.md
     - nodeId: sub-execute
       nodeKind: agent.sub
-      label: 子Agent - 执行
-      category: Agent/Sub
-      agentId: sub-agent
+      label: 子 Agent
+      agentRef: talos-code-execute
       config:
         turnMode: normal
         systemPrompt: 按照计划步骤执行任务。
+        model: deepseek.com/deepseek-v4-flash
       inputPorts:
         - portId: in
           dataType: flow
+          required: true
         - portId: prompt
           dataType: prompt
+          required: true
         - portId: data
           dataType: any
+          required: true
       outputPorts:
         - portId: out
           dataType: flow
+          required: true
         - portId: result
           dataType: string
+          required: true
       params: []
+      category: Agent/Sub
+      agentMdPath: .agents-flow/agents/talos-code-execute.agent.md
     - nodeId: main-evaluate
       nodeKind: agent.main
-      label: 主Agent - 评分
-      category: Agent/Main
-      agentId: main-agent
+      label: 主 Agent
+      agentRef: talos-code-plan
       config:
         turnMode: evaluate
-        evaluatePrompt: >-
-          评估执行结果，给出 0-1 评分。返回 JSON：
-          {"score": <number>, "canComplete": <boolean>, "reason": "<string>"}
+        evaluatePrompt: '评估执行结果，给出 0-1 评分。返回 JSON： {"score": <number>, "canComplete": <boolean>, "reason": "<string>"}'
+        model: deepseek.com/deepseek-v4-flash
       inputPorts:
         - portId: in
           dataType: flow
+          required: true
         - portId: data
           dataType: any
+          required: true
       outputPorts:
         - portId: out
           dataType: flow
+          required: true
         - portId: result
           dataType: string
+          required: true
         - portId: score
           dataType: score
+          required: true
       params: []
+      category: Agent/Main
+      agentMdPath: .agents-flow/agents/Talos-Code-Plan.agent.md
     - nodeId: finish
       nodeKind: control.finish
       label: 结束
-      category: Control/Finish
       config: {}
       inputPorts:
         - portId: in
           dataType: flow
+          required: true
         - portId: result
           dataType: any
+          required: true
       outputPorts: []
       params: []
+      category: Control/Finish
   edges:
-    # 加载 → 主Agent Plan
     - source: loader-workdir
       target: main-prompt
       sourceHandle: out
       targetHandle: in
+      dataEdge: false
     - source: loader-workdir
       target: main-prompt
       sourceHandle: data
       targetHandle: data
       dataEdge: true
-    # 主Agent Plan → 子Agent执行
     - source: main-prompt
       target: sub-execute
       sourceHandle: out
       targetHandle: in
+      dataEdge: false
     - source: main-prompt
       target: sub-execute
       sourceHandle: result
       targetHandle: prompt
       dataEdge: true
-    # 执行 → 评分
     - source: sub-execute
       target: main-evaluate
       sourceHandle: result
@@ -188,7 +211,7 @@ graph:
       target: main-evaluate
       sourceHandle: out
       targetHandle: in
-    # 评分 → 结束
+      dataEdge: false
     - source: main-evaluate
       target: finish
       sourceHandle: result
@@ -198,6 +221,7 @@ graph:
       target: finish
       sourceHandle: out
       targetHandle: in
+      dataEdge: false
   startNodeId: loader-workdir
 runtime:
   maxConcurrency: 1
@@ -232,3 +256,5 @@ layout:
     x: 0
     y: 0
     zoom: 0.8
+extensions:
+  customNodeSpecs: []

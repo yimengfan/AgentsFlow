@@ -313,3 +313,8 @@ log 内容 （使用英文）：
 - 对壳层尺寸或颜色进行硬编码会偏离 Workbench token system。
 - 渲染 per-document 内容的组件（如 `<FlowEditorSurface>`）在 identity prop 变化时必须加 `key={identityProp}`，否则 React 复用组件实例会导致第三方 provider（如 `ReactFlowProvider`）的内部状态不重置。详见 `docs/testing-supplementation.md` §8.4。
 - 保持此文件简洁：稳定的设计理由放到 ADR，可执行约束放到 specs，新增文档时同步更新 `docs/README.md`。
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->

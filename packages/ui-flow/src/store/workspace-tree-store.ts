@@ -30,6 +30,8 @@ export interface WorkspaceTreeState {
   isLoading: boolean;
   /** Error message if tree loading failed */
   error: string | null;
+  /** Path of the file currently highlighted in the tree (set by inspector "reveal in explorer") */
+  highlightedFilePath: string | null;
 }
 
 export interface WorkspaceTreeActions {
@@ -55,6 +57,10 @@ export interface WorkspaceTreeActions {
   clearRecentWorkspaces: () => void;
   /** Reset store state (close workspace) */
   closeWorkspace: () => void;
+  /** Highlight a file in the tree and expand its parent directories */
+  revealFilePath: (filePath: string) => void;
+  /** Clear the highlighted file path */
+  clearHighlight: () => void;
 }
 
 export type WorkspaceTreeStore = WorkspaceTreeState & WorkspaceTreeActions;
@@ -69,6 +75,7 @@ export const useWorkspaceTreeStore = create<WorkspaceTreeStore>()(
       recentWorkspaces: [],
       isLoading: false,
       error: null,
+      highlightedFilePath: null,
 
       setRootPath: (path) => set({ rootPath: path, tree: [], error: null }),
 
@@ -122,7 +129,32 @@ export const useWorkspaceTreeStore = create<WorkspaceTreeStore>()(
 
       clearRecentWorkspaces: () => set({ recentWorkspaces: [] }),
 
-      closeWorkspace: () => set({ rootPath: null, tree: [], error: null }),
+      revealFilePath: (filePath) => {
+        const { tree, rootPath } = get();
+        if (!rootPath) return;
+
+        // Resolve to absolute path if relative
+        const absolutePath = filePath.startsWith("/") ? filePath : `${rootPath}/${filePath}`;
+
+        // Walk up the path, expanding each parent directory
+        let currentTree = [...tree] as TreeNode[];
+        const parts = absolutePath.slice(rootPath.length + 1).split("/");
+        let currentDir = rootPath;
+        for (let i = 0; i < parts.length - 1; i++) {
+          currentDir = `${currentDir}/${parts[i]}`;
+          const updated = updateNodeInTree(currentTree, currentDir, (node) => ({
+            ...node,
+            isExpanded: true,
+          }));
+          currentTree = updated;
+        }
+
+        set({ tree: currentTree, highlightedFilePath: absolutePath });
+      },
+
+      clearHighlight: () => set({ highlightedFilePath: null }),
+
+      closeWorkspace: () => set({ rootPath: null, tree: [], error: null, highlightedFilePath: null }),
     }),
     {
       name: "agentsflow-workspace-tree",
