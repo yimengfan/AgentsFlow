@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TreeNode } from "../lib/workspace-tree.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useWorkspaceTreeStore } from "../store/workspace-tree-store.js";
@@ -69,6 +69,14 @@ export function FileTreeItem({ node, depth, onContextMenu }: FileTreeItemProps) 
   const isHighlighted = !node.isDirectory && node.path === highlightedFilePath;
   const isExpanded = node.isDirectory && node.isExpanded;
   const isLoading = node.isDirectory && node.isLoading;
+
+  // Scroll highlighted item into view
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isHighlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isHighlighted]);
 
   const handleDirectoryToggle = useCallback(async () => {
     if (!node.isDirectory) return;
@@ -149,6 +157,7 @@ export function FileTreeItem({ node, depth, onContextMenu }: FileTreeItemProps) 
   return (
     <div>
       <div
+        ref={rowRef}
         onClick={node.isDirectory ? handleDirectoryToggle : handleFileClick}
         onContextMenu={handleContextMenu}
         style={{

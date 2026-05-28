@@ -2,11 +2,12 @@ import type { CSSProperties, JSX } from "react";
 import { useCallback, useMemo, useState } from "react";
 import type { DataTrace, ErrorTrace } from "@agentsflow/agent-contracts";
 import type { FlowDefinition, NodeDef, ParamDef, PromptAssetManifest, PromptSegment, ProviderPromptPackage } from "@agentsflow/flow-schema";
-import { useWorkspaceTreeStore } from "../store/workspace-tree-store.js";
+import { useWorkspaceTreeStore, type DirEntryLike } from "../store/workspace-tree-store.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
 import { useRuntimeStore, type PromptSourceRef } from "../store/runtime-store.js";
 import { useSettingsStore } from "../store/settings-store.js";
 import { useWorkbenchStore } from "../store/workbench-store.js";
+import { usePlatform } from "@agentsflow/platform-adapter";
 import { BORDER, SPACING, SURFACE, TEXT, TYPO, ACCENT } from "./workbench-tokens.js";
 import { getAgentDropdownItems, assemblePromptPackage } from "@agentsflow/prompt-asset-resolver";
 
@@ -401,14 +402,20 @@ export function NodeInspector({ flowPath, flow, selectedNodeId, selectedEdgeId, 
   const [promptPreviewExpanded, setPromptPreviewExpanded] = useState(false);
   const [selectedPromptFileIdx, setSelectedPromptFileIdx] = useState<number | null>(null);
 
+  const platform = usePlatform();
   const revealFilePath = useWorkspaceTreeStore((s) => s.revealFilePath);
   const setActiveLeftView = useWorkbenchStore((s) => s.setActiveLeftView);
 
   // Handle source file reveal — highlights the file in the explorer sidebar
-  const handleRevealSourceFile = useCallback((filePath: string) => {
-    revealFilePath(filePath);
+  // Must async-load directory contents along the path since the tree is lazy-loaded
+  const handleRevealSourceFile = useCallback(async (filePath: string) => {
+    const loadDir = async (dirPath: string): Promise<readonly DirEntryLike[]> => {
+      const entries = await platform.workspace.readDir(dirPath);
+      return entries as readonly DirEntryLike[];
+    };
+    await revealFilePath(filePath, loadDir);
     setActiveLeftView("explorer");
-  }, [revealFilePath, setActiveLeftView]);
+  }, [revealFilePath, setActiveLeftView, platform]);
 
   // If an edge is selected, show edge I/O inspector
   if (selectedEdgeId && selectedEdge && !selectedNodeId) {

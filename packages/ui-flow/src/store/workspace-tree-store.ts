@@ -1,7 +1,18 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { TreeNode } from "../lib/workspace-tree.js";
-import { buildTreeNode, updateNodeInTree } from "../lib/workspace-tree.js";
+import { buildTreeNode, updateNodeInTree, findNodeInTree } from "../lib/workspace-tree.js";
+
+/**
+ * Directory entry shape expected by the tree builder.
+ * Matches what platform.workspace.readDir returns.
+ */
+export interface DirEntryLike {
+  readonly name: string;
+  readonly path: string;
+  readonly isDirectory: boolean;
+  readonly isFlowFile: boolean;
+}
 
 /**
  * WorkspaceTreeStore — manages the file tree browser state.
@@ -57,8 +68,8 @@ export interface WorkspaceTreeActions {
   clearRecentWorkspaces: () => void;
   /** Reset store state (close workspace) */
   closeWorkspace: () => void;
-  /** Highlight a file in the tree and expand its parent directories */
-  revealFilePath: (filePath: string) => void;
+  /** Highlight a file in the tree, expanding and lazy-loading parent directories */
+  revealFilePath: (filePath: string, loadDir: (dirPath: string) => Promise<readonly DirEntryLike[]>) => Promise<void>;
   /** Clear the highlighted file path */
   clearHighlight: () => void;
 }
@@ -129,24 +140,62 @@ export const useWorkspaceTreeStore = create<WorkspaceTreeStore>()(
 
       clearRecentWorkspaces: () => set({ recentWorkspaces: [] }),
 
-      revealFilePath: (filePath) => {
+      revealFilePath: async (filePath, loadDir) => {
         const { tree, rootPath } = get();
         if (!rootPath) return;
 
         // Resolve to absolute path if relative
         const absolutePath = filePath.startsWith("/") ? filePath : `${rootPath}/${filePath}`;
 
-        // Walk up the path, expanding each parent directory
+        // Walk from root toward the target, ensuring each directory along the way
+        // is expanded AND has its children loaded (lazy-load as needed).
         let currentTree = [...tree] as TreeNode[];
         const parts = absolutePath.slice(rootPath.length + 1).split("/");
+
+        // Build the list of directories from root to the file's parent
+        const dirPaths: string[] = [];
         let currentDir = rootPath;
         for (let i = 0; i < parts.length - 1; i++) {
           currentDir = `${currentDir}/${parts[i]}`;
-          const updated = updateNodeInTree(currentTree, currentDir, (node) => ({
-            ...node,
-            isExpanded: true,
-          }));
-          currentTree = updated;
+          dirPaths.push(currentDir);
+        }
+
+        // For each directory in the path: if children not loaded, load them; then expand
+        for (const dirPath of dirPaths) {
+          let node = findNodeInTree(currentTree, dirPath);
+
+          if (!node) {
+            // Node doesn't exist in tree yet — can't traverse further
+            // This can happen if the tree hasn't loaded the parent yet.
+            // Still set the highlighted path so if it appears later it will match.
+            break;
+          }
+
+          if (node.isDirectory && node.children === null) {
+            // Lazy-load children
+            try {
+              const entries = await loadDir(dirPath);
+              const children = entries.map((entry) => buildTreeNode(entry));
+              currentTree = updateNodeInTree(currentTree, dirPath, (n) => ({
+                ...n,
+                children: [...children],
+                isLoading: false,
+                isExpanded: true,
+              }));
+            } catch {
+              // If loading fails, just expand what we have
+              currentTree = updateNodeInTree(currentTree, dirPath, (n) => ({
+                ...n,
+                isExpanded: true,
+              }));
+            }
+          } else if (node.isDirectory) {
+            // Children already loaded, just expand
+            currentTree = updateNodeInTree(currentTree, dirPath, (n) => ({
+              ...n,
+              isExpanded: true,
+            }));
+          }
         }
 
         set({ tree: currentTree, highlightedFilePath: absolutePath });
