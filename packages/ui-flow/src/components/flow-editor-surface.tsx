@@ -90,7 +90,7 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
 
       {/* Inspector panel — rendered when a node or edge is selected */}
       {hasSelection ? (
-        <div style={{ width: 340, flexShrink: 0, borderLeft: `1px solid ${BORDER.default}` }}>
+        <div style={{ width: 272, flexShrink: 0, borderLeft: `1px solid ${BORDER.default}` }}>
           <NodeInspector
             flowPath={flowPath}
             flow={doc.flow}
