@@ -91,7 +91,7 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
       {/* Inspector panel — rendered when a node or edge is selected */}
       {hasSelection ? (
         <div style={{ width: 272, flexShrink: 0, borderLeft: `1px solid ${BORDER.default}`, overflow: "hidden" }}>
-          <div style={{ transform: "scale(0.8)", transformOrigin: "top left", width: 340 }}>
+          <div style={{ width: 340, transform: "scale(0.8)", transformOrigin: "top left" }}>
             <NodeInspector
               flowPath={flowPath}
               flow={doc.flow}
