@@ -1,10 +1,9 @@
 import { useCallback } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ReactFlowProvider } from "@xyflow/react";
 import { FlowCanvas } from "./flow-canvas.js";
 import { NodeInspector, type YamlRevealTarget } from "./node-inspector.js";
 import { useWorkspaceStore } from "../store/workspace-store.js";
-import { SURFACE, RESIZE_HANDLE } from "./workbench-tokens.js";
+import { BORDER } from "./workbench-tokens.js";
 import type { NodeSpec } from "@agentsflow/node-spec-registry";
 
 /**
@@ -59,59 +58,49 @@ export function FlowEditorSurface({ flowPath }: FlowEditorSurfaceProps) {
   const hasSelection = doc.selectedNodeId !== null || doc.selectedEdgeId !== null;
 
   return (
-    <PanelGroup direction="horizontal" style={{ height: "100%" }}>
-      {/* Canvas — fills entire width when no node or edge is selected */}
-      <Panel id="canvas" order={1} defaultSize={hasSelection ? 72 : 100} minSize={55}>
-        <div style={{ height: "100%", width: "100%" }}>
-          <ReactFlowProvider>
-            <FlowCanvas
-              flow={doc.flow}
-              selectedNodeId={doc.selectedNodeId}
-              onSelectNode={selectNode}
-              onAddEdge={(edge) => {
-                addEdge(flowPath, edge);
-              }}
-              onMoveNode={(nodeId: string, position: { x: number; y: number }) => {
-                moveNode(flowPath, nodeId, position);
-              }}
-              onAddNode={(spec: NodeSpec, position: { x: number; y: number }) => {
-                return addNode(flowPath, spec, position);
-              }}
-              onRemoveNode={(nodeId: string) => {
-                removeNode(flowPath, nodeId);
-              }}
-              onRemoveEdge={(source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
-                removeEdge(flowPath, source, target, sourceHandle, targetHandle);
-              }}
-              onSelectEdge={(edgeId: string | null) => {
-                selectEdge(edgeId);
-              }}
-            />
-          </ReactFlowProvider>
-        </div>
-      </Panel>
+    <div style={{ height: "100%", display: "flex", flexDirection: "row" }}>
+      {/* Canvas — fills remaining width when inspector is shown, or full width otherwise */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ReactFlowProvider>
+          <FlowCanvas
+            flow={doc.flow}
+            selectedNodeId={doc.selectedNodeId}
+            onSelectNode={selectNode}
+            onAddEdge={(edge) => {
+              addEdge(flowPath, edge);
+            }}
+            onMoveNode={(nodeId: string, position: { x: number; y: number }) => {
+              moveNode(flowPath, nodeId, position);
+            }}
+            onAddNode={(spec: NodeSpec, position: { x: number; y: number }) => {
+              return addNode(flowPath, spec, position);
+            }}
+            onRemoveNode={(nodeId: string) => {
+              removeNode(flowPath, nodeId);
+            }}
+            onRemoveEdge={(source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
+              removeEdge(flowPath, source, target, sourceHandle, targetHandle);
+            }}
+            onSelectEdge={(edgeId: string | null) => {
+              selectEdge(edgeId);
+            }}
+          />
+        </ReactFlowProvider>
+      </div>
 
       {/* Inspector panel — rendered when a node or edge is selected */}
       {hasSelection ? (
-        <>
-          <PanelResizeHandle
-            style={{
-              width: RESIZE_HANDLE.size,
-              background: RESIZE_HANDLE.background,
-            }}
+        <div style={{ width: 340, flexShrink: 0, borderLeft: `1px solid ${BORDER.default}` }}>
+          <NodeInspector
+            flowPath={flowPath}
+            flow={doc.flow}
+            selectedNodeId={doc.selectedNodeId}
+            selectedEdgeId={doc.selectedEdgeId}
+            onRevealYaml={handleRevealYaml}
+            onSelectNode={selectNode}
           />
-          <Panel id="inspector" order={2} defaultSize={28} minSize={18} maxSize={45}>
-            <NodeInspector
-              flowPath={flowPath}
-              flow={doc.flow}
-              selectedNodeId={doc.selectedNodeId}
-              selectedEdgeId={doc.selectedEdgeId}
-              onRevealYaml={handleRevealYaml}
-              onSelectNode={selectNode}
-            />
-          </Panel>
-        </>
+        </div>
       ) : null}
-    </PanelGroup>
+    </div>
   );
 }
